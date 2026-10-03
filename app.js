@@ -8,7 +8,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '10';
+const APP_VERSION = '11';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -289,8 +289,8 @@ function applyTheme() {
   document.body.classList.toggle('night', night);
   const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = night ? '#0F1030' : '#FBF6EE';
 }
-const NAV = [['today', 'home', 'Today'], ['prayers', 'mosque', 'Prayers'], ['azkar', 'beads', 'Azkar'], ['study', 'cap', 'Study'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
-const TAB_OF = { rel: 'more', person: 'more', azkarEdit: 'azkar', duaEdit: 'azkar', reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
+const NAV = [['today', 'home', 'Today'], ['prayers', 'mosque', 'Prayers'], ['azkar', 'beads', 'Azkar'], ['study', 'cap', 'Study'], ['rel', 'heart', 'People'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
+const TAB_OF = { person: 'rel', azkarEdit: 'azkar', duaEdit: 'azkar', reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
 function nav() { const cur = TAB_OF[S.view] || S.view; return `<nav class="nav">${NAV.map(([v, ic, l]) => `<button data-act="go" data-arg="${v}" class="${cur === v ? 'on' : ''}">${I[ic]}${l}</button>`).join('')}</nav>`; }
 function pageTop(title, backTo) { return `<div class="ph-top">${backTo ? `<button class="back" data-act="go" data-arg="${backTo}" aria-label="Back">${I.back}</button>` : ''}<h1>${esc(title)}</h1></div>`; }
 function ck(done) { return `<span class="ck ${done ? 'on' : ''}">${I.check}</span>`; }
@@ -482,7 +482,7 @@ function miniBars(vals, dates, max, color, label) {
 
 /* ---------- More ---------- */
 function vMore() {
-  const rows = [['quran', 'book', 'c3', 'Quran', `Page ${currentPage()} of 604`], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['zakat', 'crescent', 'c1', 'Zakat', items('zakat').length ? 'Date set' : 'No date set'], ['fasts', 'plate', 'c5', 'Fasts to make up', `${items('fast').reduce((a, f) => a + Math.max(0, f.data.total - f.data.done), 0)} remaining`], ['nazr', 'hand', 'c4', 'Nazr', `${items('nazr').filter(n => n.data.done < n.data.total).length} open`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['rel', 'heart', 'c6', 'Relationships', S.settings.relPin ? 'Private · locked' : 'Private'], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => !m.data.done && m.data.date >= today()).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
+  const rows = [['quran', 'book', 'c3', 'Quran', `Page ${currentPage()} of 604`], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['zakat', 'crescent', 'c1', 'Zakat', items('zakat').length ? 'Date set' : 'No date set'], ['fasts', 'plate', 'c5', 'Fasts to make up', `${items('fast').reduce((a, f) => a + Math.max(0, f.data.total - f.data.done), 0)} remaining`], ['nazr', 'hand', 'c4', 'Nazr', `${items('nazr').filter(n => n.data.done < n.data.total).length} open`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => !m.data.done && m.data.date >= today()).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
   return `<div class="page">${pageTop('More')}<div class="wrap"><div class="list">${rows.map(r => `<button class="row" data-act="go" data-arg="${r[0]}">${icon(r[1], r[2])}<span class="t"><b>${r[3]}</b><span>${r[4]}</span></span>${I.chev}</button>`).join('')}</div></div></div>`;
 }
 
@@ -608,7 +608,7 @@ const agoText = d => { if (!d) return 'not logged'; const n = diffDays(d, today(
 async function pinHash(pin) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('rise:' + S.user.id + ':' + pin)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
 function relLocked() { return S.settings.relPin && !S.relOpen; }
 function vRelLock() {
-  return `<div class="page">${pageTop('Relationships', 'more')}<div class="wrap"><div class="list center" style="padding:26px 18px"><div style="font-size:34px">🔒</div><p class="mt">Enter your PIN</p>
+  return `<div class="page">${pageTop('Relationships')}<div class="wrap"><div class="list center" style="padding:26px 18px"><div style="font-size:34px">🔒</div><p class="mt">Enter your PIN</p>
   <input id="rel-pin" class="inp mt center" type="password" inputmode="numeric" maxlength="8" autocomplete="off" style="font-size:24px;letter-spacing:8px">
   <button class="btn full mt" data-act="relUnlock">Unlock</button><p class="small muted mt">Forgot it? Go to Settings → Relationships PIN → Remove, then sign in again.</p></div></div></div>`;
 }
@@ -618,7 +618,7 @@ function vRel() {
   const fu = []; for (const p of act) for (const f of p.data.followups || []) if (!f.done) fu.push({ p, f }); fu.sort((a, b) => (a.f.date + (a.f.time || '')) < (b.f.date + (b.f.time || '')) ? -1 : 1);
   const tag = s => s === 'Dating' ? 'green' : s === 'Paused' ? 'violet' : s === 'Ended' ? 'red' : '';
   const row = p => { const lt = p.data.lastTalked ? diffDays(p.data.lastTalked, today()) : null; return `<button class="row" data-act="openPerson" data-arg="${p.id}"><span class="av-c">${esc((p.data.name || '?')[0].toUpperCase())}</span><span class="t"><b>${esc(p.data.name)}</b><span>${p.data.since ? 'Since ' + fmtDateY(p.data.since) + ' · ' + since(p.data.since) : 'Start date not set'}</span><span style="${lt != null && lt >= 5 ? 'color:var(--danger)' : ''}">Last talked ${agoText(p.data.lastTalked)}</span></span><span class="tag ${tag(p.data.status)}">${p.data.status}</span></button>`; };
-  return `<div class="page">${pageTop('Relationships', 'more')}<div class="wrap">
+  return `<div class="page">${pageTop('Relationships')}<div class="wrap">
   ${fu.length ? `<div class="h2">Follow-ups</div><div class="list">${fu.slice(0, 6).map(({ p, f }) => { const n = diffDays(today(), f.date); return `<div class="row"><button class="ck" data-act="relFuDone" data-arg="${p.id}|${f.id}">${I.check}</button><button class="t" style="text-align:left" data-act="openPerson" data-arg="${p.id}"><b>${esc(f.text)}</b><span>${esc(p.data.name)} · ${fmtDate(f.date)}${f.time ? ' · ' + fmt12(f.time) : ''}</span></button><span class="tag ${n < 0 ? 'red' : n <= 1 ? '' : 'green'}">${n < 0 ? 'Overdue' : n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n + ' days'}</span></div>`; }).join('')}</div>` : ''}
   <div class="h2">People</div><div class="list">${act.length ? act.map(row).join('') : '<div class="empty">Add someone to start</div>'}</div>
   <button class="btn add" data-act="sheetPerson">Add person</button>
@@ -1189,6 +1189,6 @@ sb.auth.onAuthStateChange((ev, session) => {
 let _lastY = 0;
 window.addEventListener('scroll', () => { const y = window.scrollY, n = document.querySelector('.nav'); if (!n) return; if (y > _lastY + 6 && y > 120) n.classList.add('hide'); else if (y < _lastY - 6 || y < 120) n.classList.remove('hide'); _lastY = y; }, { passive: true });
 window.__rise = { buildReminders: () => buildReminders() };
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { S.relOpen = false; if (['rel', 'person'].includes(S.view) && S.settings.relPin) { S.view = 'more'; render(); } } if (document.visibilityState === 'visible') { checkForUpdate(); if (S.user) { render(); flush(); scheduleReminderSync(); } } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { S.relOpen = false; if (S.view === 'person' && S.settings.relPin) { S.view = 'rel'; render(); } else if (S.view === 'rel') render(); } if (document.visibilityState === 'visible') { checkForUpdate(); if (S.user) { render(); flush(); scheduleReminderSync(); } } });
 setTimeout(checkForUpdate, 3000);
 setInterval(() => { if (S.user && !$('#sheet-root').innerHTML && document.activeElement?.tagName !== 'TEXTAREA' && document.activeElement?.tagName !== 'INPUT') { const night = document.body.classList.contains('night'); applyTheme(); if (night !== document.body.classList.contains('night')) render(); } }, 60000);
