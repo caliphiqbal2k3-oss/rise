@@ -8,7 +8,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '9';
+const APP_VERSION = '10';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -75,6 +75,8 @@ const I = {
   maghrib: P('M3 18h18M7 14a5 5 0 0 1 10 0M12 3v6M9 6l3 3 3-3M4 11l1.5 1M20 11l-1.5 1'),
   isha: P('M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5zM17 4l.6 1.4L19 6l-1.4.6L17 8l-.6-1.4L15 6l1.4-.6z'),
   beads: P('M12 3a2 2 0 1 0 0 .01M7 5.5a2 2 0 1 0 0 .01M17 5.5a2 2 0 1 0 0 .01M4.5 10a2 2 0 1 0 0 .01M19.5 10a2 2 0 1 0 0 .01M6 15a2 2 0 1 0 0 .01M18 15a2 2 0 1 0 0 .01M12 14v4M10 20h4l-2 2z'),
+  heart: P('M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z'),
+  lock: P('M6 11h12v10H6zM8 11V8a4 4 0 0 1 8 0v3'),
   pin: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#8A6A2E"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>'
 };
 
@@ -94,7 +96,7 @@ const DEF = {
   gymDays: [0, 1, 2, 3, 4], gymTimes: { 0: '18:30', 1: '18:30', 2: '18:30', 3: '18:30', 4: '18:30' }, gymNudge: 30,
   quranGoal: 30, quranTime: '21:00', waterGoal: 3, bodyDay: 5, bodyTime: '10:00', weeklyTime: '20:00', remindTime: '09:00',
   hijriAdjust: 0, hijriAnchor: null, fastDays: [1, 4],
-  reminders: { azkar: true, custom: true, prayers: true, gym: true, quran: true, languages: true, study: true, exams: true, assignments: true, dates: true, zakat: true, body: true, import: true, weekly: true, fasts: false }
+  reminders: { rel: true, relNeutral: true, azkar: true, custom: true, prayers: true, gym: true, quran: true, languages: true, study: true, exams: true, assignments: true, dates: true, zakat: true, body: true, import: true, weekly: true, fasts: false }
 };
 
 /* ---------------- state ---------------- */
@@ -273,6 +275,7 @@ function countdowns() {
   const t = today(), L = [];
   for (const e of items('exam')) if (e.data.date >= t) L.push({ days: diffDays(t, e.data.date), icon: 'cap', cls: 'g', title: `${e.data.subject} ${e.data.type}`, sub: `${e.data.chapters ? e.data.chapters + ' · ' : ''}${fmtDate(e.data.date)}`, act: 'go', arg: 'study' });
   for (const a of items('assignment')) if (!a.data.submitted && a.data.due >= t) L.push({ days: diffDays(t, a.data.due), icon: 'doc', cls: 's', title: a.data.title, sub: `${a.data.subject ? a.data.subject + ' · ' : ''}Due ${fmtDate(a.data.due)}`, act: 'go', arg: 'study' });
+  for (const p of relPeople()) if (p.data.bday?.d && p.data.status !== 'Ended') { const n = nextYearly(p.data.bday.m, p.data.bday.d); L.push({ days: diffDays(t, n), icon: 'gift', cls: 'b', title: S.settings.relPin ? 'Birthday' : `${p.data.name}'s birthday`, sub: fmtDate(n), act: 'go', arg: 'rel' }); }
   for (const e of items('event')) { const n = nextYearly(e.data.month, e.data.day); L.push({ days: diffDays(t, n), icon: 'gift', cls: 'b', title: e.data.title, sub: fmtDate(n), act: 'go', arg: 'dates' }); }
   const z = zakatDates(); if (z?.first) L.push({ days: diffDays(t, z.first), icon: 'crescent', cls: 'b', title: 'Zakat date', sub: `${z.z.data.hd} ${HM[z.z.data.hm - 1]} · ${fmtDate(z.first)}`, act: 'go', arg: 'zakat' });
   return L.sort((a, b) => a.days - b.days);
@@ -287,7 +290,7 @@ function applyTheme() {
   const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = night ? '#0F1030' : '#FBF6EE';
 }
 const NAV = [['today', 'home', 'Today'], ['prayers', 'mosque', 'Prayers'], ['azkar', 'beads', 'Azkar'], ['study', 'cap', 'Study'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
-const TAB_OF = { azkarEdit: 'azkar', duaEdit: 'azkar', reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
+const TAB_OF = { rel: 'more', person: 'more', azkarEdit: 'azkar', duaEdit: 'azkar', reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
 function nav() { const cur = TAB_OF[S.view] || S.view; return `<nav class="nav">${NAV.map(([v, ic, l]) => `<button data-act="go" data-arg="${v}" class="${cur === v ? 'on' : ''}">${I[ic]}${l}</button>`).join('')}</nav>`; }
 function pageTop(title, backTo) { return `<div class="ph-top">${backTo ? `<button class="back" data-act="go" data-arg="${backTo}" aria-label="Back">${I.back}</button>` : ''}<h1>${esc(title)}</h1></div>`; }
 function ck(done) { return `<span class="ck ${done ? 'on' : ''}">${I.check}</span>`; }
@@ -479,7 +482,7 @@ function miniBars(vals, dates, max, color, label) {
 
 /* ---------- More ---------- */
 function vMore() {
-  const rows = [['quran', 'book', 'c3', 'Quran', `Page ${currentPage()} of 604`], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['zakat', 'crescent', 'c1', 'Zakat', items('zakat').length ? 'Date set' : 'No date set'], ['fasts', 'plate', 'c5', 'Fasts to make up', `${items('fast').reduce((a, f) => a + Math.max(0, f.data.total - f.data.done), 0)} remaining`], ['nazr', 'hand', 'c4', 'Nazr', `${items('nazr').filter(n => n.data.done < n.data.total).length} open`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => !m.data.done && m.data.date >= today()).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
+  const rows = [['quran', 'book', 'c3', 'Quran', `Page ${currentPage()} of 604`], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['zakat', 'crescent', 'c1', 'Zakat', items('zakat').length ? 'Date set' : 'No date set'], ['fasts', 'plate', 'c5', 'Fasts to make up', `${items('fast').reduce((a, f) => a + Math.max(0, f.data.total - f.data.done), 0)} remaining`], ['nazr', 'hand', 'c4', 'Nazr', `${items('nazr').filter(n => n.data.done < n.data.total).length} open`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['rel', 'heart', 'c6', 'Relationships', S.settings.relPin ? 'Private · locked' : 'Private'], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => !m.data.done && m.data.date >= today()).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
   return `<div class="page">${pageTop('More')}<div class="wrap"><div class="list">${rows.map(r => `<button class="row" data-act="go" data-arg="${r[0]}">${icon(r[1], r[2])}<span class="t"><b>${r[3]}</b><span>${r[4]}</span></span>${I.chev}</button>`).join('')}</div></div></div>`;
 }
 
@@ -591,6 +594,54 @@ function vDuaEdit() {
   return `<div class="page">${pageTop("Edit du'as", 'azkar')}<div class="wrap"><p class="small muted" style="margin:0 6px">Move pages up or down, or delete ones you don't need.</p><div class="list">${L.map((d, i) => `<div class="row"><div class="mv"><button data-act="mvDua" data-arg="${d.id}|-1" ${i ? '' : 'disabled'}>▲</button><button data-act="mvDua" data-arg="${d.id}|1" ${i < L.length - 1 ? '' : 'disabled'}>▼</button></div>${d.data.img ? `<img class="dua-thumb" loading="lazy" src="${esc(d.data.img)}" alt="">` : `<span class="t" dir="rtl" style="text-align:right">${esc((d.data.text || '').slice(0, 70))}</span>`}<span style="flex:1"></span><span class="small muted">${i + 1}</span><button class="link" style="color:var(--danger);margin-left:10px" data-act="delDua" data-arg="${d.id}">Delete</button></div>`).join('')}</div>
   <button class="btn sec2 add" data-act="sheetDuaAdd">Add du'a</button></div></div>`;
 }
+/* ---------- Relationships ---------- */
+const REL_STATUS = ['Talking', 'Dating', 'Paused', 'Ended'];
+const REL_INFO = [['met', 'How we met'], ['from', 'Where she is from'], ['work', 'Studies or work'], ['family', 'Family'], ['likes', 'Likes'], ['dislikes', 'Dislikes']];
+const relPeople = () => items('person');
+function since(dateStr) {
+  if (!dateStr) return '';
+  const n = diffDays(dateStr, today()); if (n < 0) return 'starts ' + fmtDate(dateStr);
+  if (n < 14) return plural(n, 'day'); if (n < 60) return plural(Math.floor(n / 7), 'week');
+  const m = Math.floor(n / 30.44); return m < 24 ? plural(m, 'month') : `${Math.floor(m / 12)} years ${m % 12 ? plural(m % 12, 'month') : ''}`.trim();
+}
+const agoText = d => { if (!d) return 'not logged'; const n = diffDays(d, today()); return n <= 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago'; };
+async function pinHash(pin) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('rise:' + S.user.id + ':' + pin)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+function relLocked() { return S.settings.relPin && !S.relOpen; }
+function vRelLock() {
+  return `<div class="page">${pageTop('Relationships', 'more')}<div class="wrap"><div class="list center" style="padding:26px 18px"><div style="font-size:34px">🔒</div><p class="mt">Enter your PIN</p>
+  <input id="rel-pin" class="inp mt center" type="password" inputmode="numeric" maxlength="8" autocomplete="off" style="font-size:24px;letter-spacing:8px">
+  <button class="btn full mt" data-act="relUnlock">Unlock</button><p class="small muted mt">Forgot it? Go to Settings → Relationships PIN → Remove, then sign in again.</p></div></div></div>`;
+}
+function vRel() {
+  if (relLocked()) return vRelLock();
+  const all = relPeople(), act = all.filter(p => p.data.status !== 'Ended').sort((a, b) => (b.data.lastTalked || '') > (a.data.lastTalked || '') ? 1 : -1), arch = all.filter(p => p.data.status === 'Ended');
+  const fu = []; for (const p of act) for (const f of p.data.followups || []) if (!f.done) fu.push({ p, f }); fu.sort((a, b) => (a.f.date + (a.f.time || '')) < (b.f.date + (b.f.time || '')) ? -1 : 1);
+  const tag = s => s === 'Dating' ? 'green' : s === 'Paused' ? 'violet' : s === 'Ended' ? 'red' : '';
+  const row = p => { const lt = p.data.lastTalked ? diffDays(p.data.lastTalked, today()) : null; return `<button class="row" data-act="openPerson" data-arg="${p.id}"><span class="av-c">${esc((p.data.name || '?')[0].toUpperCase())}</span><span class="t"><b>${esc(p.data.name)}</b><span>${p.data.since ? 'Since ' + fmtDateY(p.data.since) + ' · ' + since(p.data.since) : 'Start date not set'}</span><span style="${lt != null && lt >= 5 ? 'color:var(--danger)' : ''}">Last talked ${agoText(p.data.lastTalked)}</span></span><span class="tag ${tag(p.data.status)}">${p.data.status}</span></button>`; };
+  return `<div class="page">${pageTop('Relationships', 'more')}<div class="wrap">
+  ${fu.length ? `<div class="h2">Follow-ups</div><div class="list">${fu.slice(0, 6).map(({ p, f }) => { const n = diffDays(today(), f.date); return `<div class="row"><button class="ck" data-act="relFuDone" data-arg="${p.id}|${f.id}">${I.check}</button><button class="t" style="text-align:left" data-act="openPerson" data-arg="${p.id}"><b>${esc(f.text)}</b><span>${esc(p.data.name)} · ${fmtDate(f.date)}${f.time ? ' · ' + fmt12(f.time) : ''}</span></button><span class="tag ${n < 0 ? 'red' : n <= 1 ? '' : 'green'}">${n < 0 ? 'Overdue' : n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n + ' days'}</span></div>`; }).join('')}</div>` : ''}
+  <div class="h2">People</div><div class="list">${act.length ? act.map(row).join('') : '<div class="empty">Add someone to start</div>'}</div>
+  <button class="btn add" data-act="sheetPerson">Add person</button>
+  ${arch.length ? `<button class="link mt" style="margin-left:6px" data-act="togglePast" data-arg="rel">${S.showPast.rel ? 'Hide' : 'Show'} archive (${arch.length})</button>${S.showPast.rel ? `<div class="list">${arch.map(row).join('')}</div>` : ''}` : ''}
+  <p class="small muted center mt2">${S.settings.relPin ? 'Locked with your PIN when you leave the app.' : 'Tip: set a PIN in Settings to lock this section.'}</p></div></div>`;
+}
+function vPerson() {
+  if (relLocked()) return vRelLock();
+  const p = item(S.personId); if (!p) { S.view = 'rel'; return vRel(); }
+  const d = p.data, ev = (d.events || []).slice().sort((a, b) => a.date < b.date ? 1 : -1), fu = (d.followups || []).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const bdayNext = d.bday?.d ? nextYearly(d.bday.m, d.bday.d) : null;
+  return `<div class="page">${pageTop(d.name, 'rel')}<div class="wrap">
+  <div class="list" style="padding:16px"><div class="hstack" style="justify-content:space-between"><span class="tag">${d.status}</span><button class="link" data-act="sheetPerson" data-arg="${p.id}">Edit</button></div>
+   <div class="two mt"><div><div class="small muted">Talking since</div><b>${d.since ? fmtDateY(d.since) : '–'}</b><div class="small muted">${since(d.since)}</div></div><div><div class="small muted">Last talked</div><b>${agoText(d.lastTalked)}</b><div><button class="link small" data-act="relTalked" data-arg="${p.id}">Talked today</button></div></div></div>
+   ${bdayNext ? `<div class="mt"><div class="small muted">Birthday</div><b>${d.bday.d} ${MONL[d.bday.m - 1]}</b> <span class="small muted">· in ${plural(diffDays(today(), bdayNext), 'day')}</span></div>` : ''}</div>
+  <div class="h2">Key info</div><div class="list">${REL_INFO.filter(([k]) => d.info?.[k]).map(([k, l]) => `<div class="row"><span class="t"><span>${l}</span><b style="white-space:pre-wrap">${esc(d.info[k])}</b></span></div>`).join('') || '<div class="empty">Nothing yet · tap Edit to add</div>'}</div>
+  <div class="h2">Follow-ups</div><div class="list">${fu.length ? fu.map(f => `<div class="row"><button class="ck ${f.done ? 'on' : ''}" data-act="relFuDone" data-arg="${p.id}|${f.id}">${I.check}</button><span class="t"><b>${esc(f.text)}</b><span>${fmtDate(f.date)}${f.time ? ' · ' + fmt12(f.time) : ''}</span></span><button class="link" style="color:var(--danger)" data-act="relFuDel" data-arg="${p.id}|${f.id}">Delete</button></div>`).join('') : '<div class="empty">e.g. "Ask how her exam went" on Tuesday</div>'}</div>
+  <button class="btn sec2 add" data-act="sheetRelFu" data-arg="${p.id}">Add follow-up</button>
+  <div class="h2">Timeline</div><div class="list">${ev.length ? ev.map(e => `<button class="row" data-act="sheetRelEvent" data-arg="${p.id}|${e.id}"><span class="t"><b>${esc(e.text)}</b><span>${fmtDateY(e.date)}</span></span>${I.chev}</button>`).join('') : '<div class="empty">First call, first meeting, important talks…</div>'}</div>
+  <button class="btn sec2 add" data-act="sheetRelEvent" data-arg="${p.id}">Add event</button>
+  <div class="h2">Notes</div><div class="list" style="padding:8px"><textarea class="note-box" data-on="relNote" data-arg="${p.id}" placeholder="Anything she told you that you want to remember…">${esc(d.notes || '')}</textarea></div>
+  <button class="btn danger full mt2" data-act="relDelete" data-arg="${p.id}">Delete ${esc(d.name)}</button></div></div>`;
+}
 function vTasks() {
   return `<div class="page">${pageTop('My tasks', 'more')}<div class="wrap"><p class="muted small" style="margin:0 6px">Prayers, gym, Quran, languages, cardio, sleep and water are always on your checklist. Add your own tasks here.</p>
   <div class="list">${items('task').length ? items('task').map(t => `<button class="row" data-act="sheetTask" data-arg="${t.id}">${icon('tasks', 'c1')}<span class="t"><b>${esc(t.data.title)}</b><span>${t.data.repeat === 'daily' ? 'Every day' : t.data.repeat === 'once' ? 'Once · ' + fmtDateY(t.data.date) : (t.data.weekdays || []).map(w => DOW[w]).join(', ')}</span></span>${I.chev}</button>`).join('') : '<div class="empty">No extra tasks yet</div>'}</div>
@@ -600,7 +651,7 @@ function vTasks() {
 /* ---------- Settings ---------- */
 function vSettings() {
   const st = S.settings, r = st.reminders, dates = Object.keys(S.times).sort(), lastT = dates.at(-1);
-  const remRows = [['azkar', 'Morning azkar (after Fajr) and evening azkar (after Maghrib)'], ['custom', 'My reminders'], ['prayers', 'Prayer times (Adhan)'], ['gym', 'Gym'], ['quran', 'Quran'], ['languages', 'Languages'], ['study', 'Study sessions'], ['exams', 'Exams (3, 2 and 1 day before)'], ['assignments', 'Assignments (1 week and 5 days before)'], ['dates', 'Important dates (2 weeks and 1 week before)'], ['zakat', 'Zakat (1 month and 1 week before)'], ['body', 'Weekly body measurements'], ['import', 'Import next month of prayer times'], ['weekly', 'Friday weekly summary'], ['fasts', 'Fasts to make up']];
+  const remRows = [['rel', 'Relationships (birthdays and follow-ups)'], ['relNeutral', 'Relationship notifications say only "Reminder"'], ['azkar', 'Morning azkar (after Fajr) and evening azkar (after Maghrib)'], ['custom', 'My reminders'], ['prayers', 'Prayer times (Adhan)'], ['gym', 'Gym'], ['quran', 'Quran'], ['languages', 'Languages'], ['study', 'Study sessions'], ['exams', 'Exams (3, 2 and 1 day before)'], ['assignments', 'Assignments (1 week and 5 days before)'], ['dates', 'Important dates (2 weeks and 1 week before)'], ['zakat', 'Zakat (1 month and 1 week before)'], ['body', 'Weekly body measurements'], ['import', 'Import next month of prayer times'], ['weekly', 'Friday weekly summary'], ['fasts', 'Fasts to make up']];
   const perm = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
   return `<div class="page">${pageTop('Settings', 'more')}<div class="wrap">
   <div class="h2">You</div><div class="list">
@@ -611,6 +662,7 @@ function vSettings() {
    <button class="row" data-act="go" data-arg="importTimes"><span class="t"><b>Import prayer times</b><span>${lastT ? 'Awqaf times saved until ' + fmtDateY(lastT) : 'No Awqaf times yet · using estimated times'}</span></span>${I.chev}</button>
    <button class="row" data-act="sheetIqamah"><span class="t"><b>Iqamah times</b><span>${PR.map(p => `${PN[p]} ${st.iqamah[p]}`).join(' · ')} min</span></span>${I.chev}</button>
    <div class="row"><span class="t"><b>Hijri date adjustment</b><span>${hijriText(today())}</span></span><div class="stepper"><button data-act="hijriAdj" data-arg="-1">−</button><b style="min-width:30px;font-size:16px">${st.hijriAdjust > 0 ? '+' : ''}${st.hijriAdjust}</b><button data-act="hijriAdj" data-arg="1">+</button></div></div>
+   <button class="row" data-act="sheetRelPin"><span class="t"><b>Relationships PIN</b><span>${S.settings.relPin ? 'On' : 'Off'}</span></span>${I.chev}</button>
    <button class="row" data-act="sheetStart"><span class="t"><b>Count missed prayers from</b><span>${st.startDate ? fmtDateY(st.startDate) : '–'}</span></span>${I.chev}</button></div>
   <div class="h2">Goals and times</div><div class="list">
    <button class="row" data-act="sheetGymTimes"><span class="t"><b>Gym days and times</b><span>${st.gymDays.map(d => `${DOW[d]} ${fmt12(st.gymTimes[d])}`).join(' · ')}</span></span>${I.chev}</button>
@@ -797,6 +849,26 @@ const SHEETS = {
     openSheet(`<h2>Add du'a</h2><p class="small muted">Choose a photo of the du'a, or type it.</p>${fld('Photo', '<input name="photo" type="file" accept="image/*">')}
     ${fld('Or type it', '<textarea name="text" dir="rtl" rows="5"></textarea>')}<div class="actions"><button class="btn" data-act="saveDuaPhoto">Add</button></div>`);
   },
+  sheetPerson(id) {
+    const p = id ? item(id) : null, d = p?.data || {};
+    openSheet(`<h2>${p ? 'Edit' : 'Add person'}</h2>${fld('Name', inp('name', d.name || ''))}${fld('Status', picks('status', REL_STATUS.map(s => [s, s]), [d.status || 'Talking'], false))}
+    ${fld('Talking since', inp('since', d.since || today(), 'date'))}
+    <div class="two">${fld('Birthday day', inp('bd', d.bday?.d || '', 'number', 'min="1" max="31" inputmode="numeric" placeholder="Optional"'))}${fld('Birthday month', `<select name="bm"><option value="">–</option>${MONL.map((m, i) => `<option value="${i + 1}" ${d.bday?.m === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select>`)}</div>
+    ${REL_INFO.map(([k, l]) => fld(l, `<textarea name="i_${k}" rows="2">${esc(d.info?.[k] || '')}</textarea>`)).join('')}${saveBtns('savePerson', id || '')}`);
+  },
+  sheetRelEvent(arg) {
+    const [pid, eid] = arg.split('|'); const e = eid ? (item(pid).data.events || []).find(x => x.id === eid) : null;
+    openSheet(`<h2>${e ? 'Edit event' : 'Add event'}</h2>${fld('What happened', `<textarea name="text" rows="3">${esc(e?.text || '')}</textarea>`)}${fld('Date', inp('date', e?.date || today(), 'date'))}${saveBtns('saveRelEvent', arg, e ? 'relEventDel' : '')}`);
+  },
+  sheetRelFu(pid) {
+    const tm = addDays(today(), 1);
+    openSheet(`<h2>Add follow-up</h2>${fld('Remind me to', inp('text', '', 'text', 'placeholder="e.g. Ask how her exam went"'))}<div class="two">${fld('Date', inp('date', tm, 'date'))}${fld('Time', inp('time', '19:00', 'time'))}</div>${saveBtns('saveRelFu', pid)}`);
+  },
+  sheetRelPin() {
+    openSheet(`<h2>Relationships PIN</h2><p class="small muted">${S.settings.relPin ? 'Change or remove the PIN that locks the Relationships section.' : 'Choose a 4 to 8 digit PIN. You will need it each time you open Relationships.'}</p>
+    ${fld('New PIN', '<input name="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off">')}${fld('Repeat PIN', '<input name="pin2" type="password" inputmode="numeric" maxlength="8" autocomplete="off">')}
+    <div class="actions">${S.settings.relPin ? '<button class="btn danger" data-act="relPinRemove">Remove PIN</button>' : ''}<button class="btn" data-act="saveRelPin">Save</button></div>`);
+  },
   sheetQadaAdd() { openSheet(`<h2>Add older missed prayers</h2><p class="small muted">For prayers missed before you started using Rise.</p>${fld('Prayer', picks('prayer', PR.map(p => [p, PN[p]]), ['fajr'], false))}${fld('How many', inp('count', '', 'number', 'inputmode="numeric"'))}${saveBtns('saveQadaAdd')}`); },
   sheetIqamah() { openSheet(`<h2>Iqamah after Adhan</h2><p class="small muted">Minutes after the Adhan.</p>${PR.map(p => `<div class="row"><span class="t"><b>${PN[p]}</b></span><input class="inp" name="iq_${p}" type="number" inputmode="numeric" value="${S.settings.iqamah[p]}" style="width:90px"></div>`).join('')}${saveBtns('saveIqamah')}`); },
   sheetName() { openSheet(`<h2>Your name</h2>${fld('Name', inp('name', S.settings.name))}${saveBtns('saveName')}`); },
@@ -896,6 +968,28 @@ const ACT = {
     else addItem('dua', { text, order });
     done("Du'a added at the end");
   },
+  openPerson(id) { S.personId = id; ACT.go('person'); },
+  async relUnlock() { const v = $('#rel-pin').value; if (!v) return; if (await pinHash(v) === S.settings.relPin) { S.relOpen = true; render(); } else { toast('Wrong PIN'); $('#rel-pin').value = ''; } },
+  savePerson(id) {
+    const name = val('name'); if (!need(name, 'Enter a name')) return;
+    const bd = num('bd'), bm = +val('bm') || null, info = {}; for (const [k] of REL_INFO) { const v = val('i_' + k); if (v) info[k] = v; }
+    const data = { name, status: picked('status')[0] || 'Talking', since: val('since') || null, bday: bd && bm ? { d: bd, m: bm } : null, info };
+    if (id) updItem(id, data); else { const it = addItem('person', { ...data, events: [], followups: [], notes: '', lastTalked: today() }); S.personId = it.id; S.view = 'person'; }
+    done('Saved');
+  },
+  relTalked(id) { updItem(id, { lastTalked: today() }); render(); toast('Noted'); },
+  saveRelEvent(arg) {
+    const [pid, eid] = arg.split('|'), p = item(pid), text = val('text'), date = val('date') || today(); if (!need(text, 'Write what happened')) return;
+    const ev = (p.data.events || []).slice(); if (eid) { const e = ev.find(x => x.id === eid); e.text = text; e.date = date; } else ev.push({ id: uid(), text, date });
+    updItem(pid, { events: ev }); done('Saved');
+  },
+  relEventDel(arg) { const [pid, eid] = arg.split('|'); if (!confirm('Delete this event?')) return; updItem(pid, { events: item(pid).data.events.filter(e => e.id !== eid) }); done('Deleted'); },
+  saveRelFu(pid) { const text = val('text'), date = val('date'), time = val('time'); if (!need(text, 'Enter what to remember') || !need(date, 'Pick a date')) return; updItem(pid, { followups: [...(item(pid).data.followups || []), { id: uid(), text, date, time, done: false }] }); done(`Follow-up set for ${fmtDate(date)}`); },
+  relFuDone(arg) { const [pid, fid] = arg.split('|'); updItem(pid, { followups: item(pid).data.followups.map(f => f.id === fid ? { ...f, done: !f.done } : f) }); render(); },
+  relFuDel(arg) { const [pid, fid] = arg.split('|'); updItem(pid, { followups: item(pid).data.followups.filter(f => f.id !== fid) }); render(); },
+  relDelete(id) { if (!confirm('Delete this person and everything saved about her? To keep the history, set the status to Ended instead.')) return; delItem(id); S.view = 'rel'; render(); toast('Deleted'); },
+  async saveRelPin() { const a = val('pin'), b = val('pin2'); if (!/^\d{4,8}$/.test(a)) return toast('Use 4 to 8 digits'); if (a !== b) return toast("PINs don't match"); S.settings.relPin = await pinHash(a); S.relOpen = true; saveSettings(); done('PIN saved'); },
+  relPinRemove() { if (!confirm('Remove the PIN?')) return; S.settings.relPin = null; saveSettings(); done('PIN removed'); },
   delItemAct(id) { if (!confirm('Delete this?')) return; delItem(id); done('Deleted'); },
   theme(k) { S.settings.theme = k; saveSettings(); render(); },
   toggleRem(k) { S.settings.reminders[k] = !S.settings.reminders[k]; saveSettings(); render(); },
@@ -926,6 +1020,7 @@ const ACT = {
 };
 Object.assign(ACT, SHEETS);
 const ON = {
+  relNote(el) { const id = el.dataset.arg; clearTimeout(ON._r); ON._r = setTimeout(() => updItem(id, { notes: el.value }), 700); },
   dayNote(el) { const d = el.dataset.arg; clearTimeout(ON._n); ON._n = setTimeout(() => setDay(d, x => { x.note = el.value; }), 700); },
   pageSurah(el) { const p = +el.value; if (p >= 1 && p <= 604) { const s = $('#sheet-root [name=surah]'); if (s) s.value = surahForPage(p); } }
 };
@@ -939,7 +1034,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => { const el = e.target.closest('[data-on]'); if (el && ON[el.dataset.on]) ON[el.dataset.on](el); });
 
-const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
+const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, rel: vRel, person: vPerson, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
 
 /* ================= REMINDERS ================= */
 // Rise works out the reminders for the next 7 days and stores them; a small service on Supabase sends them on time.
@@ -947,6 +1042,7 @@ function buildReminders() {
   const st = S.settings, r = st.reminders, now = new Date(), t = today(), out = [];
   const push = (when, title, body, tag, url = './') => { if (when > now) out.push({ at: when.toISOString(), title, body, tag, url }); };
   if (r.azkar) for (let i = 0; i < 7; i++) { const d = addDays(t, i), ad = day(d).azkar || {}; if (!ad.sabahDone) push(new Date(adhan(d, 'fajr').getTime() + 30 * 60e3), 'Morning azkar', 'أذكار الصباح · tap to start', `az-s-${d}`, './?v=azkar&t=sabah'); if (!ad.masaDone) push(new Date(adhan(d, 'maghrib').getTime() + 15 * 60e3), 'Evening azkar', 'أذكار المساء · tap to start', `az-m-${d}`, './?v=azkar&t=masa'); }
+  if (r.rel) for (const p of relPeople()) for (const f of (p.data.followups || [])) if (!f.done && diffDays(t, f.date) >= 0 && diffDays(t, f.date) <= 60) push(at(f.date, f.time || '10:00'), r.relNeutral ? 'Reminder' : `${p.data.name}: follow up`, r.relNeutral ? 'Open Rise for details' : f.text, `rf-${p.id}-${f.id}`, './?v=rel');
   if (r.custom) for (const m of items('reminder')) if (!m.data.done && diffDays(t, m.data.date) <= 60) push(at(m.data.date, m.data.time), m.data.title, m.data.note || 'Your reminder from Rise', `rm-${m.id}`, './?v=reminders');
   for (let i = 0; i < 7; i++) {
     const d = addDays(t, i), wd = parseYmd(d).getDay(), dd = day(d);
@@ -958,6 +1054,8 @@ function buildReminders() {
     const morning = at(d, st.remindTime);
     if (r.exams) for (const e of items('exam')) { const n = diffDays(d, e.data.date); if ([3, 2, 1].includes(n)) push(morning, `${e.data.subject} ${e.data.type} ${n === 1 ? 'tomorrow' : 'in ' + n + ' days'}`, e.data.chapters ? `Chapters: ${e.data.chapters}` : 'Time to revise', `ex-${d}-${e.id}`, './?v=study'); }
     if (r.assignments) for (const a of items('assignment')) { if (a.data.submitted) continue; const n = diffDays(d, a.data.due); if ([7, 5].includes(n)) push(morning, `${a.data.title} due in ${n} days`, `Deadline ${fmtDate(a.data.due)}`, `as-${d}-${a.id}`, './?v=study'); }
+    if (r.rel) for (const p of relPeople()) { if (p.data.status === 'Ended') continue; const nt = r.relNeutral;
+      if (p.data.bday?.d) { const n = diffDays(d, nextYearly(p.data.bday.m, p.data.bday.d)); if ([14, 7, 0].includes(n)) push(morning, nt ? 'Reminder' : `${p.data.name}'s birthday ${n ? 'in ' + (n === 7 ? '1 week' : '2 weeks') : 'is today'}`, nt ? 'Open Rise for details' : `${p.data.bday.d} ${MONL[p.data.bday.m - 1]}`, `rb-${d}-${p.id}`, './?v=rel'); } }
     if (r.dates) for (const e of items('event')) { const n = diffDays(d, nextYearly(e.data.month, e.data.day)); if ([14, 7].includes(n)) push(morning, `${e.data.title} in ${n === 7 ? '1 week' : '2 weeks'}`, `${e.data.day} ${MONL[e.data.month - 1]}`, `ev-${d}-${e.id}`); }
     if (r.zakat) { const z = zakatDates(); if (z?.first) { const n = diffDays(d, z.first); if (n === 30 || n === 7) push(morning, `Zakat due in ${n === 30 ? '1 month' : '1 week'}`, `${z.z.data.hd} ${HM[z.z.data.hm - 1]} · ${fmtDateY(z.first)}`, `zk-${d}`); } }
     if (r.body && wd === st.bodyDay) push(at(d, st.bodyTime), 'Weekly measurements', 'Weight, waist at the navel and lower belly', `bd-${d}`, './?v=fitness');
@@ -1091,6 +1189,6 @@ sb.auth.onAuthStateChange((ev, session) => {
 let _lastY = 0;
 window.addEventListener('scroll', () => { const y = window.scrollY, n = document.querySelector('.nav'); if (!n) return; if (y > _lastY + 6 && y > 120) n.classList.add('hide'); else if (y < _lastY - 6 || y < 120) n.classList.remove('hide'); _lastY = y; }, { passive: true });
 window.__rise = { buildReminders: () => buildReminders() };
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { checkForUpdate(); if (S.user) { render(); flush(); scheduleReminderSync(); } } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { S.relOpen = false; if (['rel', 'person'].includes(S.view) && S.settings.relPin) { S.view = 'more'; render(); } } if (document.visibilityState === 'visible') { checkForUpdate(); if (S.user) { render(); flush(); scheduleReminderSync(); } } });
 setTimeout(checkForUpdate, 3000);
 setInterval(() => { if (S.user && !$('#sheet-root').innerHTML && document.activeElement?.tagName !== 'TEXTAREA' && document.activeElement?.tagName !== 'INPUT') { const night = document.body.classList.contains('night'); applyTheme(); if (night !== document.body.classList.contains('night')) render(); } }, 60000);

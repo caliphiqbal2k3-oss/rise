@@ -259,3 +259,5 @@ table.imp td,table.imp th{padding:5px 3px;border-bottom:1px solid var(--line);te
 .nav button{padding:6px 4px;font-size:10.5px}.nav svg{width:23px;height:23px}
 
 .nav{transition:transform .25s ease,opacity .25s}.nav.hide{transform:translate3d(0,140%,0);opacity:0;pointer-events:none}
+
+.av-c{width:42px;height:42px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:600;color:#fff;background:linear-gradient(135deg,#D4537E,#7B4FE0)}
