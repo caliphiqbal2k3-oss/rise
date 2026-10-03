@@ -160,7 +160,7 @@ async function loadAll() {
   saveCache();
 }
 function firstRun() {
-  S.settings.startDate = today();
+  S.settings.startDate = prayerDay();
   saveSettings();
   if (!items('language').length) addItem('language', { name: 'High Valyrian', minutes: 20, time: '20:00', icon: 'dragon', active: true });
 }
@@ -191,6 +191,7 @@ function prayerState(now = new Date()) {
   const iq = cur ? new Date(cur.at.getTime() + (S.settings.iqamah[cur.p] || 0) * 60e3) : null;
   return { cur, next, iqamahAt: iq, inIqamah: !!(cur && iq > now) };
 }
+function prayerDay(now = new Date()) { const t = today(); return now < adhan(t, 'fajr') ? addDays(t, -1) : t; }
 function hms(ms) { const s = Math.max(0, Math.floor(ms / 1000)); return `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`; }
 function hm(ms) { const m = Math.max(0, Math.ceil(ms / 60000)); const h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m} min`; }
 function isEnded(date, p, now = new Date()) { return prayerEnd(date, p) <= now; }
@@ -206,7 +207,7 @@ function qadaCounts() {
   return c;
 }
 function prayerStreak() {
-  let d = today(), n = 0; if (prayedCount(d) < 5) d = addDays(d, -1);
+  let d = prayerDay(), n = 0; if (prayedCount(d) < 5) d = addDays(d, -1);
   while (prayedCount(d) === 5) { n++; d = addDays(d, -1); }
   return n;
 }
@@ -228,8 +229,8 @@ function tasksFor(date) { const wd = parseYmd(date).getDay(); return items('task
 function sessionsFor(date) { const wd = parseYmd(date).getDay(); return items('session').filter(s => (s.data.weekdays || []).includes(wd)).sort((a, b) => toMin(a.data.start) - toMin(b.data.start)); }
 function checklist(date) {
   const d = day(date), L = [];
-  const pc = prayedCount(date);
-  L.push({ key: 'prayers', icon: 'mosque', c: 'c2', title: 'Prayers', sub: `${pc} of 5 prayed`, done: pc === 5, act: 'go', arg: 'prayers' });
+  const pdte = date === today() ? prayerDay() : date, pc = prayedCount(pdte);
+  L.push({ key: 'prayers', icon: 'mosque', c: 'c2', title: 'Prayers', sub: `${pc} of 5 prayed${pdte !== date ? ' · ' + DOWL[parseYmd(pdte).getDay()] + ' until Fajr' : ''}`, done: pc === 5, act: 'go', arg: 'prayers' });
   if (isGymDay(date)) { const g = d.gym || {}; L.push({ key: 'gym', icon: 'dumbbell', c: 'c1', title: 'Gym', sub: g.status === 'went' ? (g.trained?.length ? g.trained.join(', ') : 'Went') : g.status === 'skipped' ? "Didn't go" : fmt12(S.settings.gymTimes[parseYmd(date).getDay()]), done: g.status === 'went', act: 'sheetGym', arg: date }); }
   const qm = quranMinutes(date), last = quranLogs().at(-1);
   L.push({ key: 'quran', icon: 'book', c: 'c3', title: `Quran · ${S.settings.quranGoal} min`, sub: quranToday(date).length ? `${qm} min today` : last ? `Continue from page ${last.data.page} · ${SURAH[last.data.surah]}` : 'Start reading', done: quranDone(date), act: 'sheetQuran', arg: date });
@@ -245,7 +246,7 @@ function checklist(date) {
 }
 function dailyScore(date) {
   const d = day(date); let got = 0, max = 0;
-  got += prayedCount(date) * 8; max += 40;
+  got += prayedCount(date === today() ? prayerDay() : date) * 8; max += 40;
   max += 15; if (quranDone(date)) got += 15; else got += Math.min(15, quranMinutes(date) / S.settings.quranGoal * 15);
   if (isGymDay(date)) { max += 15; if ((d.gym || {}).status === 'went') got += 15; }
   const ls = langs(); if (ls.length) { max += 10; got += ls.reduce((a, l) => a + Math.min(1, langMinutes(l.id, date) / l.data.minutes), 0) / ls.length * 10; }
@@ -295,7 +296,7 @@ function render() {
 function vToday() {
   const t = today(), d = parseYmd(t), dd = day(t);
   const L = checklist(t), done = L.filter(x => x.done).length;
-  const pc = prayedCount(t), qc = qadaCounts(), qadaTotal = PR.reduce((a, p) => a + qc[p], 0);
+  const pdT = prayerDay(), pc = prayedCount(pdT), qc = qadaCounts(), qadaTotal = PR.reduce((a, p) => a + qc[p], 0);
   const last = quranLogs().at(-1), page = currentPage();
   const water = round(dd.water || 0), wg = S.settings.waterGoal;
   const score = dailyScore(t), ps = prayerState();
@@ -306,7 +307,7 @@ function vToday() {
   <div class="greet"><span class="chip">${DOW[d.getDay()]}, ${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()} · ${esc(hijriText(t))}</span><h1>Rise today,<br><span>${esc(S.settings.name)}</span></h1></div></div>
   <div class="wrap">
    <button class="prayer" data-act="go" data-arg="prayers"><small id="pc-label">${ps.inIqamah ? 'Iqamah in' : 'Next prayer'}</small><div class="n" id="pc-name">${ps.inIqamah ? PN[ps.cur.p] + ' · Adhan ' + fmt12(timesFor(ps.cur.date)[ps.cur.p]) : PN[ps.next.p] + ' · ' + fmt12(timesFor(ps.next.date)[ps.next.p])}</div><div class="cd" id="pc-cd">--:--:--</div>
-    <div class="pills">${PR.map(p => { const nxt = (ps.inIqamah ? ps.cur.p : ps.next.p) === p; const dn = (dd.prayers || {})[p]; return `<span class="${nxt ? 'on' : dn ? 'done' : ''}">${PN[p]}</span>`; }).join('')}</div></button>
+    <div class="pills">${PR.map(p => { const nxt = (ps.inIqamah ? ps.cur.p : ps.next.p) === p; const dn = (day(pdT).prayers || {})[p]; return `<span class="${nxt ? 'on' : dn ? 'done' : ''}">${PN[p]}</span>`; }).join('')}</div></button>
    <div class="grid">
     <div class="card">${icon('tasks', 'c1')}<div class="pct">${Math.round(done / L.length * 100)}%</div><div class="lbl">Today's tasks</div><div class="big">${done} <span>/${L.length}</span></div><div class="bar"><i style="width:${done / L.length * 100}%;background:#4E7A4F"></i></div></div>
     <button class="card" data-act="go" data-arg="prayers">${icon('mosque', 'c2')}<div class="pct v">${pc * 20}%</div><div class="lbl">Prayers</div><div class="big">${pc} <span>/5</span></div><div class="bar"><i style="width:${pc * 20}%;background:#7B4FE0"></i></div></button>
@@ -368,9 +369,9 @@ function vPrayers() {
    <div class="disc"><div class="s1">${ps.inIqamah ? 'Iqamah' : 'Next salah'}</div><div class="s2">${PN[ps.inIqamah ? ps.cur.p : ps.next.p]}</div><div class="s3">${fmt12(ps.inIqamah ? new Date(ps.iqamahAt).toTimeString().slice(0, 5) : timesFor(ps.next.date)[ps.next.p])}</div><div class="s4">${ps.inIqamah ? 'Time until iqamah' : 'Time until Adhan'}</div><div class="s5" id="disc-cd">--:--:--</div></div></div>
   <div class="wrap">
    <div class="glass loc">${I.pin}<b style="flex:1;font-weight:500">Sharjah · ${tt.est ? 'estimated times' : 'Awqaf times'}</b>${tt.est ? '<button class="btn sm" data-act="go" data-arg="importTimes">Import</button>' : ''}</div>
-   <div class="glass"><div class="dnav"><button data-act="pDay" data-arg="-1" aria-label="Previous day">‹</button><div><b>${DOWL[d.getDay()]}${date === today() ? ' · Today' : ''}</b><span>${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()} | ${hd.d} ${HM[hd.m - 1]} ${hd.y}</span></div><button data-act="pDay" data-arg="1" aria-label="Next day">›</button></div>
+   <div class="glass"><div class="dnav"><button data-act="pDay" data-arg="-1" aria-label="Previous day">‹</button><div><b>${DOWL[d.getDay()]}${date === today() ? ' · Today' : date === prayerDay() ? ' · until Fajr' : ''}</b><span>${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()} | ${hd.d} ${HM[hd.m - 1]} ${hd.y}</span></div><button data-act="pDay" data-arg="1" aria-label="Next day">›</button></div>
     <div class="ptimes mt">${order.map(p => `<div class="pt ${p === nextP ? 'next' : ''}">${I[icons[p]]}<b>${PN[p]}</b><span>${fmt12(tt[p])}</span></div>`).join('')}</div></div>
-   <div class="glass"><h3>${date === today() ? "Today's prayers" : 'Prayers on ' + fmtDate(date)} · ${prayedCount(date)} of 5</h3>
+   <div class="glass"><h3>${date === today() ? "Today's prayers" : date === prayerDay() ? DOWL[parseYmd(date).getDay()] + "'s prayers · Isha until Fajr" : 'Prayers on ' + fmtDate(date)} · ${prayedCount(date)} of 5</h3>
     <div class="ptick">${PR.map(p => { const on = dp[p], miss = !on && isEnded(date, p, now) && date >= (S.settings.startDate || today()); return `<button class="${on ? 'on' : miss ? 'miss' : ''}" data-act="togglePrayer" data-arg="${p}"><span class="bx">${I.check}</span>${PN[p]}</button>`; }).join('')}</div>
     <p class="small" style="color:#5a5070;margin-top:8px">Tap to tick. Use the arrows above to correct any past day.</p></div>
    <div class="glass"><div class="hstack" style="justify-content:space-between"><h3 style="margin:0">Qada to make up · ${qt}</h3><button class="btn sm" data-act="sheetQadaAdd">Add older</button></div>
@@ -383,10 +384,10 @@ function historyCard() {
   const t = today(), tab = S.histTab, d = parseYmd(t);
   const ranges = { week: [addDays(t, -6), t], month: [ymd(new Date(d.getFullYear(), d.getMonth(), 1)), t], year: [`${d.getFullYear()}-01-01`, t], all: [S.settings.startDate || t, t] };
   const s = prayerStats(...ranges[tab]);
-  const per = PR.map(p => { let done = 0, tot = 0; const now = new Date(), start = S.settings.startDate || t; for (let x = ranges[tab][0] < start ? start : ranges[tab][0]; x <= t; x = addDays(x, 1)) { if ((day(x).prayers || {})[p]) { done++; tot++; } else if (isEnded(x, p, now)) tot++; } return { p, pct: tot ? Math.round(done / tot * 100) : 0 }; });
+  const per = PR.map(p => { let done = 0, tot = 0; const now = new Date(), start = S.settings.startDate || t; for (let x = ranges[tab][0] < start ? start : ranges[tab][0]; x <= t; x = addDays(x, 1)) { if ((day(x).prayers || {})[p]) { done++; tot++; } else if (isEnded(x, p, now)) tot++; } return { p, pct: tot ? Math.round(done / tot * 100) : null }; });
   return `<div class="glass"><h3>History</h3><div class="tabs">${['week', 'month', 'year', 'all'].map(k => `<button class="${tab === k ? 'on' : ''}" data-act="histTab" data-arg="${k}">${k === 'all' ? 'All time' : k[0].toUpperCase() + k.slice(1)}</button>`).join('')}</div>
   <div class="stat"><div><b>${s.pct}%</b><span>prayed</span></div><div><b>${s.done}</b><span>on record</span></div><div><b>${s.missed}</b><span>missed</span></div><div><b>${prayerStreak()}</b><span>day streak</span></div></div>
-  <div class="mt">${per.map(x => `<div class="prog"><span style="width:62px;font-size:13px">${PN[x.p]}</span><div class="bar"><i style="width:${x.pct}%;background:#7B4FE0"></i></div><span style="width:38px;text-align:right;font-size:13px">${x.pct}%</span></div>`).join('')}</div></div>`;
+  <div class="mt">${per.map(x => `<div class="prog"><span style="width:62px;font-size:13px">${PN[x.p]}</span><div class="bar"><i style="width:${x.pct || 0}%;background:#7B4FE0"></i></div><span style="width:38px;text-align:right;font-size:13px">${x.pct == null ? '–' : x.pct + '%'}</span></div>`).join('')}</div></div>`;
 }
 function calendarCard() {
   const t = parseYmd(today()); const cm = S.calMonth || [t.getFullYear(), t.getMonth()];
@@ -754,7 +755,7 @@ const SHEETS = {
 function done(msg) { closeSheet(); render(); if (msg) toast(msg); }
 const need = (v, msg) => { if (v === '' || v == null || (typeof v === 'number' && isNaN(v))) { toast(msg); return false; } return true; };
 const ACT = {
-  go(v) { S.view = v; if (v === 'prayers') S.prayerDate = today(); if (v === 'importTimes') importPreview = null; closeSheet(); render(); window.scrollTo(0, 0); },
+  go(v) { S.view = v; if (v === 'prayers') S.prayerDate = prayerDay(); if (v === 'importTimes') importPreview = null; closeSheet(); render(); window.scrollTo(0, 0); },
   closeBg(_, e) { if (e.target.classList.contains('sheet-bg')) closeSheet(); },
   pDay(n) { S.prayerDate = addDays(S.prayerDate, +n); render(); },
   pGoDate(d) { S.prayerDate = d; render(); window.scrollTo({ top: 300, behavior: 'smooth' }); },
@@ -939,7 +940,7 @@ async function startFor(user) {
   const v = new URLSearchParams(location.search).get('v'); if (v && VIEWS[v]) S.view = v;
   if (loadCache()) render();
   try { await loadAll(); } catch (e) { console.warn('load', e); if (!S.items.length && !Object.keys(S.days).length) toast('Could not load your data. Check your connection.'); }
-  render(); flush(); scheduleReminderSync();
+  S.prayerDate = prayerDay(); render(); flush(); scheduleReminderSync();
 }
 sb.auth.onAuthStateChange((ev, session) => {
   if (session?.user && (!S.user || S.user.id !== session.user.id)) startFor(session.user);
