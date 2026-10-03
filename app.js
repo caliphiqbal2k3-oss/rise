@@ -8,7 +8,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '11';
+const APP_VERSION = '12';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -290,7 +290,7 @@ function applyTheme() {
   const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = night ? '#0F1030' : '#FBF6EE';
 }
 const NAV = [['today', 'home', 'Today'], ['prayers', 'mosque', 'Prayers'], ['azkar', 'beads', 'Azkar'], ['study', 'cap', 'Study'], ['rel', 'heart', 'People'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
-const TAB_OF = { person: 'rel', azkarEdit: 'azkar', duaEdit: 'azkar', reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
+const TAB_OF = { notifs: 'today', person: 'rel', azkarEdit: 'azkar', duaEdit: 'azkar', reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
 function nav() { const cur = TAB_OF[S.view] || S.view; return `<nav class="nav">${NAV.map(([v, ic, l]) => `<button data-act="go" data-arg="${v}" class="${cur === v ? 'on' : ''}">${I[ic]}${l}</button>`).join('')}</nav>`; }
 function pageTop(title, backTo) { return `<div class="ph-top">${backTo ? `<button class="back" data-act="go" data-arg="${backTo}" aria-label="Back">${I.back}</button>` : ''}<h1>${esc(title)}</h1></div>`; }
 function ck(done) { return `<span class="ck ${done ? 'on' : ''}">${I.check}</span>`; }
@@ -315,7 +315,7 @@ function vToday() {
   const gymT = isGymDay(t) ? `Gym at ${fmt12(S.settings.gymTimes[d.getDay()])} today` : 'Rest day from the gym';
   const cds = countdowns();
   return `<div class="page">
-  <div class="hero"><div class="top"><div class="logo">RISE</div><button class="circ av" data-act="go" data-arg="settings">${esc((S.settings.name || 'K')[0])}</button><button class="circ" data-act="go" data-arg="settings" aria-label="Reminders">${I.bell.replace('<svg', '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"')}</button></div>
+  <div class="hero"><div class="top"><div class="logo">RISE</div><button class="circ" data-act="go" data-arg="notifs" aria-label="Notifications">${I.bell.replace('<svg', '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"')}${hasDueToday() ? '<span class="badge"></span>' : ''}</button></div>
   <div class="greet"><span class="chip">${DOW[d.getDay()]}, ${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()} · ${esc(hijriText(t))}</span><h1>Rise today,<br><span>${esc(S.settings.name)}</span></h1></div></div>
   <div class="wrap">
    <button class="prayer" data-act="go" data-arg="prayers"><small id="pc-label">${ps.inIqamah ? 'Iqamah in' : 'Next prayer'}</small><div class="n" id="pc-name">${ps.inIqamah ? PN[ps.cur.p] + ' · Adhan ' + fmt12(timesFor(ps.cur.date)[ps.cur.p]) : PN[ps.next.p] + ' · ' + fmt12(timesFor(ps.next.date)[ps.next.p])}</div><div class="cd" id="pc-cd">--:--:--</div>
@@ -641,6 +641,26 @@ function vPerson() {
   <button class="btn sec2 add" data-act="sheetRelEvent" data-arg="${p.id}">Add event</button>
   <div class="h2">Notes</div><div class="list" style="padding:8px"><textarea class="note-box" data-on="relNote" data-arg="${p.id}" placeholder="Anything she told you that you want to remember…">${esc(d.notes || '')}</textarea></div>
   <button class="btn danger full mt2" data-act="relDelete" data-arg="${p.id}">Delete ${esc(d.name)}</button></div></div>`;
+}
+/* ---------- Notifications ---------- */
+function hasDueToday() {
+  const t = today();
+  if (items('reminder').some(m => !m.data.done && m.data.date === t)) return true;
+  if (items('assignment').some(a => !a.data.submitted && a.data.due === t)) return true;
+  if (items('exam').some(e => e.data.date === t)) return true;
+  if (relPeople().some(p => (p.data.followups || []).some(f => !f.done && f.date <= t))) return true;
+  return false;
+}
+function vNotifs() {
+  const list = buildReminders().sort((a, b) => a.at < b.at ? -1 : 1), now = new Date(), t = today();
+  const groups = {}; for (const x of list) { const d = new Date(x.at); const k = ymd(d); (groups[k] = groups[k] || []).push(x); }
+  const keys = Object.keys(groups).sort().slice(0, 4);
+  const lbl = k => { const n = diffDays(ymd(now), k); return n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : fmtDate(k); };
+  const perm = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+  return `<div class="page">${pageTop('Notifications', 'today')}<div class="wrap">
+  ${perm !== 'granted' ? '<div class="list" style="padding:14px"><p class="small">Notifications are off on this phone. Turn them on in More → Settings.</p></div>' : ''}
+  ${keys.length ? keys.map(k => `<div class="h2">${lbl(k)}</div><div class="list">${groups[k].map(x => { const d = new Date(x.at); return `<div class="row"><span style="width:62px;font-weight:600;color:var(--gold);font-size:13px">${fmt12(pad(d.getHours()) + ':' + pad(d.getMinutes()))}</span><span class="t"><b>${esc(x.title)}</b><span>${esc(x.body || '')}</span></span></div>`; }).join('')}</div>`).join('') : '<div class="list"><div class="empty">Nothing coming up</div></div>'}
+  <p class="small muted center mt2">Choose which notifications you get in More → Settings.</p></div></div>`;
 }
 function vTasks() {
   return `<div class="page">${pageTop('My tasks', 'more')}<div class="wrap"><p class="muted small" style="margin:0 6px">Prayers, gym, Quran, languages, cardio, sleep and water are always on your checklist. Add your own tasks here.</p>
@@ -1034,7 +1054,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => { const el = e.target.closest('[data-on]'); if (el && ON[el.dataset.on]) ON[el.dataset.on](el); });
 
-const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, rel: vRel, person: vPerson, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
+const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, notifs: vNotifs, rel: vRel, person: vPerson, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
 
 /* ================= REMINDERS ================= */
 // Rise works out the reminders for the next 7 days and stores them; a small service on Supabase sends them on time.
