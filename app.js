@@ -304,7 +304,7 @@ function vToday() {
   <div class="hero"><div class="top"><div class="logo">RISE</div><button class="circ av" data-act="go" data-arg="settings">${esc((S.settings.name || 'K')[0])}</button><button class="circ" data-act="go" data-arg="settings" aria-label="Reminders">${I.bell.replace('<svg', '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"')}</button></div>
   <div class="greet"><span class="chip">${DOW[d.getDay()]}, ${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()} · ${esc(hijriText(t))}</span><h1>Rise today,<br><span>${esc(S.settings.name)}</span></h1></div></div>
   <div class="wrap">
-   <button class="prayer" data-act="go" data-arg="prayers"><small id="pc-label">${ps.inIqamah ? 'Iqamah' : 'Next prayer'}</small><div class="n" id="pc-name">${ps.inIqamah ? PN[ps.cur.p] + ' · Adhan ' + fmt12(timesFor(ps.cur.date)[ps.cur.p]) : PN[ps.next.p] + ' · ' + fmt12(timesFor(ps.next.date)[ps.next.p])}</div><div class="cd" id="pc-cd">--:--:--</div>
+   <button class="prayer" data-act="go" data-arg="prayers"><small id="pc-label">${ps.inIqamah ? 'Iqamah in' : 'Next prayer'}</small><div class="n" id="pc-name">${ps.inIqamah ? PN[ps.cur.p] + ' · Adhan ' + fmt12(timesFor(ps.cur.date)[ps.cur.p]) : PN[ps.next.p] + ' · ' + fmt12(timesFor(ps.next.date)[ps.next.p])}</div><div class="cd" id="pc-cd">--:--:--</div>
     <div class="pills">${PR.map(p => { const nxt = (ps.inIqamah ? ps.cur.p : ps.next.p) === p; const dn = (dd.prayers || {})[p]; return `<span class="${nxt ? 'on' : dn ? 'done' : ''}">${PN[p]}</span>`; }).join('')}</div></button>
    <div class="grid">
     <div class="card">${icon('tasks', 'c1')}<div class="pct">${Math.round(done / L.length * 100)}%</div><div class="lbl">Today's tasks</div><div class="big">${done} <span>/${L.length}</span></div><div class="bar"><i style="width:${done / L.length * 100}%;background:#4E7A4F"></i></div></div>
@@ -337,7 +337,7 @@ function tick() {
     lastState = key;
     const target = ps.inIqamah ? ps.iqamahAt : ps.next.at;
     const ms = target - now;
-    const el = $('#pc-cd'); if (el) el.textContent = ps.inIqamah ? `Iqamah in ${hm(ms)}` : hms(ms);
+    const el = $('#pc-cd'); if (el) el.textContent = hms(ms);
     const d = $('#disc-cd'); if (d) d.textContent = hms(ms);
     const arc = $('#arc-dot');
     if (arc) {
