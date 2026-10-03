@@ -342,10 +342,11 @@ function tick() {
     const arc = $('#arc-dot');
     if (arc) {
       const from = ps.inIqamah ? ps.cur.at : (ps.cur ? (ps.cur.at) : new Date(ps.next.at - 6 * 3600e3)), to = target;
-      let f = (now - from) / (to - from); f = Math.max(0, Math.min(1, f));
+      // like Awqaf: the dot sits at the share of time remaining and slides left toward the start as the time gets closer
+      let f = (to - now) / (to - from); f = Math.max(0, Math.min(1, f));
       const ang = (-210 + f * 240) * Math.PI / 180, R = 132, cx = 150, cy = 150;
       arc.setAttribute('cx', cx + R * Math.cos(ang)); arc.setAttribute('cy', cy + R * Math.sin(ang));
-      const pr = $('#arc-prog'); if (pr) pr.setAttribute('stroke-dashoffset', pr.dataset.len * (1 - f));
+      const pr = $('#arc-prog'); if (pr) { const L = +pr.dataset.len; pr.setAttribute('stroke-dasharray', `0 ${L * f} ${L * (1 - f)} ${L}`); }
     }
   };
   run(); tickTimer = setInterval(run, 1000);
@@ -362,7 +363,7 @@ function vPrayers() {
   const order = ['fajr', 'asr', 'sunrise', 'maghrib', 'dhuhr', 'isha'];
   const icons = { fajr: 'fajr', sunrise: 'sunrise', dhuhr: 'dhuhr', asr: 'asr', maghrib: 'maghrib', isha: 'isha' };
   return `<div class="pscreen"><div class="page" style="padding-bottom:0">${pageTop('Prayers')}
-  <div class="arcwrap"><svg viewBox="0 0 300 300"><path d="${arcPath}" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="10" stroke-linecap="round"/><path id="arc-prog" data-len="${len}" d="${arcPath}" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-dasharray="${len}" stroke-dashoffset="${len}"/><circle id="arc-dot" cx="0" cy="0" r="11" fill="#fff" style="filter:drop-shadow(0 0 8px rgba(255,255,255,.9))"/></svg>
+  <div class="arcwrap"><svg viewBox="0 0 300 300"><path d="${arcPath}" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="10" stroke-linecap="round"/><path id="arc-prog" data-len="${len}" d="${arcPath}" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 ${len}"/><circle id="arc-dot" cx="0" cy="0" r="11" fill="#fff" style="filter:drop-shadow(0 0 8px rgba(255,255,255,.9))"/></svg>
    <div class="disc"><div class="s1">${ps.inIqamah ? 'Iqamah' : 'Next salah'}</div><div class="s2">${PN[ps.inIqamah ? ps.cur.p : ps.next.p]}</div><div class="s3">${fmt12(ps.inIqamah ? new Date(ps.iqamahAt).toTimeString().slice(0, 5) : timesFor(ps.next.date)[ps.next.p])}</div><div class="s4">${ps.inIqamah ? 'Time until iqamah' : 'Time until Adhan'}</div><div class="s5" id="disc-cd">--:--:--</div></div></div>
   <div class="wrap">
    <div class="glass loc">${I.pin}<b style="flex:1;font-weight:500">Sharjah · ${tt.est ? 'estimated times' : 'Awqaf times'}</b>${tt.est ? '<button class="btn sm" data-act="go" data-arg="importTimes">Import</button>' : ''}</div>
