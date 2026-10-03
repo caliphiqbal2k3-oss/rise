@@ -8,7 +8,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '7';
+const APP_VERSION = '8';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -1064,14 +1064,20 @@ async function startFor(user) {
   S.user = user; loadQueue();
   const qs = new URLSearchParams(location.search), v = qs.get('v'); if (v && VIEWS[v]) S.view = v; if (qs.get('t')) S.azTab = qs.get('t');
   if (loadCache()) render();
-  try { await loadAll(); seedAzkar(); } catch (e) { console.warn('load', e); if (!S.items.length && !Object.keys(S.days).length) toast('Could not load your data. Check your connection.'); }
+  try { await loadAll(); seedAzkar(); migrateDuaOrder(); } catch (e) { console.warn('load', e); if (!S.items.length && !Object.keys(S.days).length) toast('Could not load your data. Check your connection.'); }
   S.prayerDate = prayerDay(); render(); flush(); scheduleReminderSync();
+}
+function migrateDuaOrder() {
+  if ((S.settings.duaOrderV || 1) >= 2 || !S.settings.azkarSeeded) return;
+  const pos = new Map(DUAS.map((d, i) => [d.img, i + 1])); let extra = 1000;
+  for (const d of duasList()) updItem(d.id, { order: d.data.img && pos.has(d.data.img) ? pos.get(d.data.img) : extra++ });
+  S.settings.duaOrderV = 2; saveSettings();
 }
 function seedAzkar() {
   if (S.settings.azkarSeeded || items('zikr').length) return;
   AZKAR.forEach((z, i) => addItem('zikr', { ...z, order: i + 1 }));
   DUAS.forEach((d, i) => addItem('dua', { img: d.img, w: d.w, h: d.h, order: i + 1 }));
-  S.settings.azkarSeeded = true; saveSettings();
+  S.settings.azkarSeeded = true; S.settings.duaOrderV = 2; saveSettings();
 }
 sb.auth.onAuthStateChange((ev, session) => {
   if (session?.user && (!S.user || S.user.id !== session.user.id)) startFor(session.user);
@@ -1082,6 +1088,8 @@ sb.auth.onAuthStateChange((ev, session) => {
   const { data } = await sb.auth.getSession();
   if (!data.session) renderAuth();
 })();
+let _lastY = 0;
+window.addEventListener('scroll', () => { const y = window.scrollY, n = document.querySelector('.nav'); if (!n) return; if (y > _lastY + 6 && y > 120) n.classList.add('hide'); else if (y < _lastY - 6 || y < 120) n.classList.remove('hide'); _lastY = y; }, { passive: true });
 window.__rise = { buildReminders: () => buildReminders() };
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { checkForUpdate(); if (S.user) { render(); flush(); scheduleReminderSync(); } } });
 setTimeout(checkForUpdate, 3000);
