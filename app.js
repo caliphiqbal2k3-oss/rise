@@ -1,13 +1,14 @@
 // Rise — personal app for prayers, Quran, study, languages, fitness and daily habits
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { calcTimes } from './praycalc.js';
+import { AZKAR, DUAS, AZKAR_QUOTE } from './azkar-data.js';
 
 const CFG = {
   url: 'https://xqlexvdshrkceguozfsc.supabase.co',
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '6';
+const APP_VERSION = '7';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -73,6 +74,7 @@ const I = {
   asr: P('M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M6.3 17.7l1.4-1.4M16.3 7.7l1.4-1.4'),
   maghrib: P('M3 18h18M7 14a5 5 0 0 1 10 0M12 3v6M9 6l3 3 3-3M4 11l1.5 1M20 11l-1.5 1'),
   isha: P('M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5zM17 4l.6 1.4L19 6l-1.4.6L17 8l-.6-1.4L15 6l1.4-.6z'),
+  beads: P('M12 3a2 2 0 1 0 0 .01M7 5.5a2 2 0 1 0 0 .01M17 5.5a2 2 0 1 0 0 .01M4.5 10a2 2 0 1 0 0 .01M19.5 10a2 2 0 1 0 0 .01M6 15a2 2 0 1 0 0 .01M18 15a2 2 0 1 0 0 .01M12 14v4M10 20h4l-2 2z'),
   pin: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#8A6A2E"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>'
 };
 
@@ -92,7 +94,7 @@ const DEF = {
   gymDays: [0, 1, 2, 3, 4], gymTimes: { 0: '18:30', 1: '18:30', 2: '18:30', 3: '18:30', 4: '18:30' }, gymNudge: 30,
   quranGoal: 30, quranTime: '21:00', waterGoal: 3, bodyDay: 5, bodyTime: '10:00', weeklyTime: '20:00', remindTime: '09:00',
   hijriAdjust: 0, hijriAnchor: null, fastDays: [1, 4],
-  reminders: { custom: true, prayers: true, gym: true, quran: true, languages: true, study: true, exams: true, assignments: true, dates: true, zakat: true, body: true, import: true, weekly: true, fasts: false }
+  reminders: { azkar: true, custom: true, prayers: true, gym: true, quran: true, languages: true, study: true, exams: true, assignments: true, dates: true, zakat: true, body: true, import: true, weekly: true, fasts: false }
 };
 
 /* ---------------- state ---------------- */
@@ -241,6 +243,9 @@ function checklist(date) {
   for (const l of langs()) { const m = langMinutes(l.id, date); L.push({ key: 'lang' + l.id, dragon: l.data.icon === 'dragon', icon: 'lang', c: 'c5', title: `${l.data.name} · ${l.data.minutes} min`, sub: m ? `${m} min today` : `Streak ${langStreak(l)} days`, done: m >= l.data.minutes, act: 'sheetLangLog', arg: l.id }); }
   for (const s of sessionsFor(date)) L.push({ key: 'ses' + s.id, icon: 'cap', c: 'c2', title: s.data.subject, sub: `Study · ${fmt12(s.data.start)}${s.data.end ? '–' + fmt12(s.data.end) : ''}`, done: !!(d.sessions || {})[s.id], act: 'toggleSession', arg: s.id + '|' + date, tick: true });
   const cm = (d.cardio || []).reduce((a, c) => a + (+c.min || 0), 0);
+  if (items('zikr').length) { const ad = day(date).azkar || {}; const isNow = date !== today() || new Date() >= adhan(date, 'maghrib');
+    L.push({ key: 'azs', icon: 'beads', c: 'c3', title: 'Morning azkar', sub: ad.sabahDone ? 'Done' : 'After Fajr · ' + zikrProgress(date, 'sabah'), done: !!ad.sabahDone, act: 'goAzkar', arg: 'sabah' });
+    L.push({ key: 'azm', icon: 'beads', c: 'c2', title: 'Evening azkar', sub: ad.masaDone ? 'Done' : (isNow ? 'After Maghrib · ' + zikrProgress(date, 'masa') : 'After Maghrib'), done: !!ad.masaDone, act: 'goAzkar', arg: 'masa' }); }
   L.push({ key: 'cardio', icon: 'walk', c: 'c5', title: 'Cardio', sub: cm ? `${cm} min` : 'Walk or bike', done: cm > 0, act: 'sheetCardio', arg: date });
   L.push({ key: 'sleep', icon: 'moon', c: 'c2', title: 'Sleep', sub: d.sleep != null ? `${d.sleep} hours` : 'How long did you sleep?', done: d.sleep != null, act: 'sheetSleep', arg: date });
   L.push({ key: 'water', icon: 'drop', c: 'c4', title: 'Water', sub: `${round(d.water || 0)} of ${S.settings.waterGoal} L`, done: (d.water || 0) >= S.settings.waterGoal, act: 'sheetWater', arg: date });
@@ -281,8 +286,8 @@ function applyTheme() {
   document.body.classList.toggle('night', night);
   const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = night ? '#0F1030' : '#FBF6EE';
 }
-const NAV = [['today', 'home', 'Today'], ['prayers', 'mosque', 'Prayers'], ['study', 'cap', 'Study'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
-const TAB_OF = { reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
+const NAV = [['today', 'home', 'Today'], ['prayers', 'mosque', 'Prayers'], ['azkar', 'beads', 'Azkar'], ['study', 'cap', 'Study'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
+const TAB_OF = { azkarEdit: 'azkar', duaEdit: 'azkar', reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
 function nav() { const cur = TAB_OF[S.view] || S.view; return `<nav class="nav">${NAV.map(([v, ic, l]) => `<button data-act="go" data-arg="${v}" class="${cur === v ? 'on' : ''}">${I[ic]}${l}</button>`).join('')}</nav>`; }
 function pageTop(title, backTo) { return `<div class="ph-top">${backTo ? `<button class="back" data-act="go" data-arg="${backTo}" aria-label="Back">${I.back}</button>` : ''}<h1>${esc(title)}</h1></div>`; }
 function ck(done) { return `<span class="ck ${done ? 'on' : ''}">${I.check}</span>`; }
@@ -553,6 +558,39 @@ function vReminders() {
   <button class="btn add" data-act="sheetReminder">Add reminder</button>
   ${rest.length ? `<div class="h2">Done and past</div><div class="list">${rest.slice(0, 30).map(row).join('')}</div>` : ''}</div></div>`;
 }
+/* ---------- Azkar ---------- */
+const zikrs = () => items('zikr').sort((a, b) => a.data.order - b.data.order);
+const duasList = () => items('dua').sort((a, b) => a.data.order - b.data.order);
+function zikrProgress(date, part) { const c = ((day(date).azkar || {})[part] || {}); const L = zikrs(); return `${L.filter(z => (c[z.id] || 0) >= z.data.count).length} of ${L.length}`; }
+function vAzkar() {
+  const tab = S.azTab || (new Date() >= adhan(today(), 'maghrib') ? 'masa' : 'sabah');
+  S.azTab = tab;
+  const head = `<div class="page">${pageTop('Azkar')}<div class="wrap"><div class="tabs az-tabs">${[['sabah', 'Sabah · الصباح'], ['masa', 'Masa · المساء'], ['duas', "Du'as · الأدعية"]].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="azTab" data-arg="${k}">${l}</button>`).join('')}</div>`;
+  if (tab === 'duas') {
+    const L = duasList();
+    return head + `<div class="hstack" style="justify-content:space-between;margin:2px 4px 10px"><span class="small muted">${L.length} du'as · tap a page to enlarge</span><button class="link" data-act="go" data-arg="duaEdit">Edit</button></div>
+    ${L.map(d => d.data.img ? `<button class="dua-img" data-act="viewDua" data-arg="${d.id}"><img loading="lazy" src="${esc(d.data.img)}" ${d.data.w ? `width="${d.data.w}" height="${d.data.h}"` : ''} alt="Du'a"></button>` : `<div class="dua-text" dir="rtl">${esc(d.data.text || '')}</div>`).join('') || '<div class="list"><div class="empty">No du\'as yet</div></div>'}
+    <button class="btn sec2 add" data-act="sheetDuaAdd">Add du'a</button></div></div>`;
+  }
+  const t = today(), ad = day(t).azkar || {}, c = ad[tab] || {}, L = zikrs(), doneN = L.filter(z => (c[z.id] || 0) >= z.data.count).length, isDone = ad[tab + 'Done'];
+  return head + `<p class="az-quote" dir="rtl">${esc(AZKAR_QUOTE)}</p>
+  <div class="list az-prog"><div class="hstack" style="justify-content:space-between"><b>${tab === 'sabah' ? 'Morning' : 'Evening'} azkar · ${doneN} of ${L.length}</b>${isDone ? '<span class="tag green">Done ✓</span>' : `<button class="btn sm" data-act="azFinish" data-arg="${tab}">Mark all done</button>`}</div><div class="bar mt"><i style="width:${L.length ? doneN / L.length * 100 : 0}%;background:#C99A45"></i></div></div>
+  ${L.map((z, i) => { const n = c[z.id] || 0, full = n >= z.data.count; const txt = tab === 'masa' && z.data.masa ? z.data.masa : z.data.text;
+    return `<button class="zk ${full ? 'full' : ''}" data-act="zikrTap" data-arg="${z.id}">${z.data.title ? `<div class="zk-t" dir="rtl">${esc(z.data.title)}</div>` : ''}<div class="zk-x" dir="rtl">${esc(txt)}</div>
+    <div class="zk-f"><span class="zk-n">${i + 1}</span><span class="zk-c">${full ? '✓ ' : ''}${Math.min(n, z.data.count)} / ${z.data.count}</span></div><i class="zk-bar" style="width:${Math.min(1, n / z.data.count) * 100}%"></i></button>`; }).join('')}
+  <div class="two mt"><button class="btn sec2" data-act="azReset" data-arg="${tab}">Reset counters</button><button class="btn sec2" data-act="go" data-arg="azkarEdit">Edit azkar</button></div>
+  <button class="link mt" style="display:block;margin:14px auto" data-act="viewSheet">View the original sheet</button></div></div>`;
+}
+function vAzkarEdit() {
+  const L = zikrs();
+  return `<div class="page">${pageTop('Edit azkar', 'azkar')}<div class="wrap"><p class="small muted" style="margin:0 6px">The same list is used for morning and evening. Use the arrows to change the order.</p><div class="list">${L.map((z, i) => `<div class="row"><div class="mv"><button data-act="mvZikr" data-arg="${z.id}|-1" ${i ? '' : 'disabled'}>▲</button><button data-act="mvZikr" data-arg="${z.id}|1" ${i < L.length - 1 ? '' : 'disabled'}>▼</button></div><button class="t" style="text-align:right" dir="rtl" data-act="sheetZikr" data-arg="${z.id}"><b>${esc(z.data.title || z.data.text.slice(0, 60))}${z.data.title || z.data.text.length <= 60 ? '' : '…'}</b><span>×${z.data.count}${z.data.masa ? ' · different evening wording' : ''}</span></button></div>`).join('')}</div>
+  <button class="btn sec2 add" data-act="sheetZikr">Add zikr</button></div></div>`;
+}
+function vDuaEdit() {
+  const L = duasList();
+  return `<div class="page">${pageTop("Edit du'as", 'azkar')}<div class="wrap"><p class="small muted" style="margin:0 6px">Move pages up or down, or delete ones you don't need.</p><div class="list">${L.map((d, i) => `<div class="row"><div class="mv"><button data-act="mvDua" data-arg="${d.id}|-1" ${i ? '' : 'disabled'}>▲</button><button data-act="mvDua" data-arg="${d.id}|1" ${i < L.length - 1 ? '' : 'disabled'}>▼</button></div>${d.data.img ? `<img class="dua-thumb" loading="lazy" src="${esc(d.data.img)}" alt="">` : `<span class="t" dir="rtl" style="text-align:right">${esc((d.data.text || '').slice(0, 70))}</span>`}<span style="flex:1"></span><span class="small muted">${i + 1}</span><button class="link" style="color:var(--danger);margin-left:10px" data-act="delDua" data-arg="${d.id}">Delete</button></div>`).join('')}</div>
+  <button class="btn sec2 add" data-act="sheetDuaAdd">Add du'a</button></div></div>`;
+}
 function vTasks() {
   return `<div class="page">${pageTop('My tasks', 'more')}<div class="wrap"><p class="muted small" style="margin:0 6px">Prayers, gym, Quran, languages, cardio, sleep and water are always on your checklist. Add your own tasks here.</p>
   <div class="list">${items('task').length ? items('task').map(t => `<button class="row" data-act="sheetTask" data-arg="${t.id}">${icon('tasks', 'c1')}<span class="t"><b>${esc(t.data.title)}</b><span>${t.data.repeat === 'daily' ? 'Every day' : t.data.repeat === 'once' ? 'Once · ' + fmtDateY(t.data.date) : (t.data.weekdays || []).map(w => DOW[w]).join(', ')}</span></span>${I.chev}</button>`).join('') : '<div class="empty">No extra tasks yet</div>'}</div>
@@ -562,7 +600,7 @@ function vTasks() {
 /* ---------- Settings ---------- */
 function vSettings() {
   const st = S.settings, r = st.reminders, dates = Object.keys(S.times).sort(), lastT = dates.at(-1);
-  const remRows = [['custom', 'My reminders'], ['prayers', 'Prayer times (Adhan)'], ['gym', 'Gym'], ['quran', 'Quran'], ['languages', 'Languages'], ['study', 'Study sessions'], ['exams', 'Exams (3, 2 and 1 day before)'], ['assignments', 'Assignments (1 week and 5 days before)'], ['dates', 'Important dates (2 weeks and 1 week before)'], ['zakat', 'Zakat (1 month and 1 week before)'], ['body', 'Weekly body measurements'], ['import', 'Import next month of prayer times'], ['weekly', 'Friday weekly summary'], ['fasts', 'Fasts to make up']];
+  const remRows = [['azkar', 'Morning azkar (after Fajr) and evening azkar (after Maghrib)'], ['custom', 'My reminders'], ['prayers', 'Prayer times (Adhan)'], ['gym', 'Gym'], ['quran', 'Quran'], ['languages', 'Languages'], ['study', 'Study sessions'], ['exams', 'Exams (3, 2 and 1 day before)'], ['assignments', 'Assignments (1 week and 5 days before)'], ['dates', 'Important dates (2 weeks and 1 week before)'], ['zakat', 'Zakat (1 month and 1 week before)'], ['body', 'Weekly body measurements'], ['import', 'Import next month of prayer times'], ['weekly', 'Friday weekly summary'], ['fasts', 'Fasts to make up']];
   const perm = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
   return `<div class="page">${pageTop('Settings', 'more')}<div class="wrap">
   <div class="h2">You</div><div class="list">
@@ -748,6 +786,17 @@ const SHEETS = {
     <div class="two">${fld('Date', inp('date', m?.data.date || today(), 'date'))}${fld('Time', inp('time', m?.data.time || `${pad(later.getHours())}:00`, 'time'))}</div>
     ${fld('Note', inp('note', m?.data.note || '', 'text', 'placeholder="Optional"'))}${saveBtns('saveReminder', id || '', id ? 'delItemAct' : '')}`);
   },
+  sheetZikr(id) {
+    const z = id ? item(id) : null;
+    openSheet(`<h2>${z ? 'Edit zikr' : 'Add zikr'}</h2>${fld('Title (optional)', inp('title', z?.data.title || '', 'text', 'dir="rtl" placeholder="e.g. آية الكرسي"'))}
+    ${fld('Zikr', `<textarea name="text" dir="rtl" rows="5">${esc(z?.data.text || '')}</textarea>`)}
+    ${fld('Evening wording (only if different)', `<textarea name="masa" dir="rtl" rows="3" placeholder="Leave empty if the same">${esc(z?.data.masa || '')}</textarea>`)}
+    ${fld('How many times', inp('count', z?.data.count || 1, 'number', 'inputmode="numeric"'))}${saveBtns('saveZikr', id || '', id ? 'delItemAct' : '')}`);
+  },
+  sheetDuaAdd() {
+    openSheet(`<h2>Add du'a</h2><p class="small muted">Choose a photo of the du'a, or type it.</p>${fld('Photo', '<input name="photo" type="file" accept="image/*">')}
+    ${fld('Or type it', '<textarea name="text" dir="rtl" rows="5"></textarea>')}<div class="actions"><button class="btn" data-act="saveDuaPhoto">Add</button></div>`);
+  },
   sheetQadaAdd() { openSheet(`<h2>Add older missed prayers</h2><p class="small muted">For prayers missed before you started using Rise.</p>${fld('Prayer', picks('prayer', PR.map(p => [p, PN[p]]), ['fajr'], false))}${fld('How many', inp('count', '', 'number', 'inputmode="numeric"'))}${saveBtns('saveQadaAdd')}`); },
   sheetIqamah() { openSheet(`<h2>Iqamah after Adhan</h2><p class="small muted">Minutes after the Adhan.</p>${PR.map(p => `<div class="row"><span class="t"><b>${PN[p]}</b></span><input class="inp" name="iq_${p}" type="number" inputmode="numeric" value="${S.settings.iqamah[p]}" style="width:90px"></div>`).join('')}${saveBtns('saveIqamah')}`); },
   sheetName() { openSheet(`<h2>Your name</h2>${fld('Name', inp('name', S.settings.name))}${saveBtns('saveName')}`); },
@@ -816,6 +865,37 @@ const ACT = {
     done(`Reminder set for ${fmtDate(data.date)} at ${fmt12(data.time)}`);
   },
   toggleReminder(id) { const m = item(id); updItem(id, { done: !m.data.done }); render(); },
+  goAzkar(t) { S.azTab = t; ACT.go('azkar'); },
+  azTab(t) { S.azTab = t; render(); window.scrollTo(0, 0); },
+  zikrTap(id) {
+    const tab = S.azTab, z = item(id), t = today();
+    setDay(t, x => { x.azkar = x.azkar || {}; const c = x.azkar[tab] = x.azkar[tab] || {}; c[id] = (c[id] || 0) >= z.data.count ? 0 : (c[id] || 0) + 1;
+      const all = zikrs().every(q => (c[q.id] || 0) >= q.data.count); x.azkar[tab + 'Done'] = all; });
+    if (navigator.vibrate) navigator.vibrate(12);
+    const y = window.scrollY; render(); window.scrollTo(0, y);
+    if ((day(t).azkar || {})[tab + 'Done']) toast(tab === 'sabah' ? 'Morning azkar complete · تقبل الله' : 'Evening azkar complete · تقبل الله');
+  },
+  azFinish(tab) { setDay(today(), x => { x.azkar = x.azkar || {}; const c = x.azkar[tab] = {}; for (const z of zikrs()) c[z.id] = z.data.count; x.azkar[tab + 'Done'] = true; }); render(); toast('تقبل الله'); },
+  azReset(tab) { if (!confirm('Reset the counters for this list today?')) return; setDay(today(), x => { x.azkar = x.azkar || {}; x.azkar[tab] = {}; x.azkar[tab + 'Done'] = false; }); render(); },
+  viewSheet() { openViewer('assets/duas/azkar-sheet.jpg'); },
+  viewDua(id) { const d = item(id); if (d?.data.img) openViewer(d.data.img); },
+  mvZikr(arg) { const [id, dir] = arg.split('|'); swapOrder(zikrs(), id, +dir); render(); },
+  mvDua(arg) { const [id, dir] = arg.split('|'); const y = window.scrollY; swapOrder(duasList(), id, +dir); render(); window.scrollTo(0, y); },
+  delDua(id) { if (!confirm("Delete this du'a?")) return; const y = window.scrollY; delItem(id); render(); window.scrollTo(0, y); },
+  saveZikr(id) {
+    const data = { title: val('title') || null, text: val('text'), masa: val('masa') || null, count: num('count') || 1 };
+    if (!need(data.text, 'Enter the zikr text')) return;
+    if (id) updItem(id, data); else addItem('zikr', { ...data, order: (zikrs().at(-1)?.data.order || 0) + 1 });
+    done('Saved');
+  },
+  async saveDuaPhoto() {
+    const f = $('#sheet-root [name=photo]')?.files?.[0]; const text = val('text');
+    if (!f && !text) return toast('Choose a photo or type the du\'a');
+    const order = (duasList().at(-1)?.data.order || 0) + 1;
+    if (f) { toast('Adding…'); const img = await shrinkImage(f); addItem('dua', { img: img.src, w: img.w, h: img.h, order }); }
+    else addItem('dua', { text, order });
+    done("Du'a added at the end");
+  },
   delItemAct(id) { if (!confirm('Delete this?')) return; delItem(id); done('Deleted'); },
   theme(k) { S.settings.theme = k; saveSettings(); render(); },
   toggleRem(k) { S.settings.reminders[k] = !S.settings.reminders[k]; saveSettings(); render(); },
@@ -859,13 +939,14 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => { const el = e.target.closest('[data-on]'); if (el && ON[el.dataset.on]) ON[el.dataset.on](el); });
 
-const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, settings: vSettings, importTimes: vImport };
+const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
 
 /* ================= REMINDERS ================= */
 // Rise works out the reminders for the next 7 days and stores them; a small service on Supabase sends them on time.
 function buildReminders() {
   const st = S.settings, r = st.reminders, now = new Date(), t = today(), out = [];
   const push = (when, title, body, tag, url = './') => { if (when > now) out.push({ at: when.toISOString(), title, body, tag, url }); };
+  if (r.azkar) for (let i = 0; i < 7; i++) { const d = addDays(t, i), ad = day(d).azkar || {}; if (!ad.sabahDone) push(new Date(adhan(d, 'fajr').getTime() + 30 * 60e3), 'Morning azkar', 'أذكار الصباح · tap to start', `az-s-${d}`, './?v=azkar&t=sabah'); if (!ad.masaDone) push(new Date(adhan(d, 'maghrib').getTime() + 15 * 60e3), 'Evening azkar', 'أذكار المساء · tap to start', `az-m-${d}`, './?v=azkar&t=masa'); }
   if (r.custom) for (const m of items('reminder')) if (!m.data.done && diffDays(t, m.data.date) <= 60) push(at(m.data.date, m.data.time), m.data.title, m.data.note || 'Your reminder from Rise', `rm-${m.id}`, './?v=reminders');
   for (let i = 0; i < 7; i++) {
     const d = addDays(t, i), wd = parseYmd(d).getDay(), dd = day(d);
@@ -913,6 +994,24 @@ async function enablePush() {
 async function testPush() {
   const { error } = await sb.from('reminders').insert({ user_id: S.user.id, at: new Date().toISOString(), title: 'Rise', body: 'Notifications are working. 🌙', tag: 'test-' + Date.now(), url: './' });
   toast(error ? 'The reminder service is not set up yet' : 'Test sent · it arrives within a minute');
+}
+
+function swapOrder(list, id, dir) {
+  const i = list.findIndex(x => x.id === id), j = i + dir; if (i < 0 || j < 0 || j >= list.length) return;
+  const a = list[i], b = list[j], oa = a.data.order, ob = b.data.order;
+  updItem(a.id, { order: ob === oa ? ob + dir : ob }); updItem(b.id, { order: oa });
+}
+function openViewer(src) {
+  const el = document.createElement('div'); el.className = 'viewer';
+  el.innerHTML = `<button class="viewer-x" aria-label="Close">✕</button><div class="viewer-in"><img src="${esc(src)}" alt=""></div><p class="viewer-h">Pinch or double-tap to zoom</p>`;
+  el.querySelector('.viewer-x').onclick = () => el.remove();
+  const img = el.querySelector('img'); img.ondblclick = () => img.classList.toggle('zoom');
+  document.body.appendChild(el);
+}
+function shrinkImage(file) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => { const im = new Image(); im.onload = () => {
+    const w = Math.min(900, im.width), h = Math.round(im.height * w / im.width); const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(im, 0, 0, w, h); res({ src: c.toDataURL('image/jpeg', 0.78), w, h }); }; im.onerror = rej; im.src = r.result; }; r.onerror = rej; r.readAsDataURL(file); });
 }
 
 /* ================= UPDATES ================= */
@@ -963,10 +1062,16 @@ async function doAuth() {
 /* ================= START ================= */
 async function startFor(user) {
   S.user = user; loadQueue();
-  const v = new URLSearchParams(location.search).get('v'); if (v && VIEWS[v]) S.view = v;
+  const qs = new URLSearchParams(location.search), v = qs.get('v'); if (v && VIEWS[v]) S.view = v; if (qs.get('t')) S.azTab = qs.get('t');
   if (loadCache()) render();
-  try { await loadAll(); } catch (e) { console.warn('load', e); if (!S.items.length && !Object.keys(S.days).length) toast('Could not load your data. Check your connection.'); }
+  try { await loadAll(); seedAzkar(); } catch (e) { console.warn('load', e); if (!S.items.length && !Object.keys(S.days).length) toast('Could not load your data. Check your connection.'); }
   S.prayerDate = prayerDay(); render(); flush(); scheduleReminderSync();
+}
+function seedAzkar() {
+  if (S.settings.azkarSeeded || items('zikr').length) return;
+  AZKAR.forEach((z, i) => addItem('zikr', { ...z, order: i + 1 }));
+  DUAS.forEach((d, i) => addItem('dua', { img: d.img, w: d.w, h: d.h, order: i + 1 }));
+  S.settings.azkarSeeded = true; saveSettings();
 }
 sb.auth.onAuthStateChange((ev, session) => {
   if (session?.user && (!S.user || S.user.id !== session.user.id)) startFor(session.user);
