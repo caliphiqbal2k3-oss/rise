@@ -8,7 +8,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '8';
+const APP_VERSION = '9';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -111,25 +111,25 @@ function loadQueue() { try { queue = JSON.parse(localStorage.getItem(queueKey())
 function saveQueue() { try { localStorage.setItem(queueKey(), JSON.stringify(queue)); } catch { } }
 function enqueue(op) {
   // collapse repeated writes to the same row
-  if (op.type === 'upsert') { const k = op.table + ':' + op.key; queue = queue.filter(q => !(q.type === 'upsert' && q.table + ':' + q.key === k)); }
+  if (op.type === 'upsert') { const k = op.table + ':' + op.key; queue = queue.filter(q => q === inflight || !(q.type === 'upsert' && q.table + ':' + q.key === k)); }
   queue.push(op); saveQueue(); saveCache(); flushSoon(); scheduleReminderSync();
 }
-let flushTimer = null, flushing = false;
+let flushTimer = null, flushing = false, inflight = null;
 function flushSoon() { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 600); }
 async function flush() {
   if (flushing || !queue.length || !navigator.onLine) return;
   flushing = true;
   try {
     while (queue.length) {
-      const op = queue[0];
+      const op = queue[0]; inflight = op;
       let res;
       if (op.type === 'upsert') res = await sb.from(op.table).upsert(op.row, op.onConflict ? { onConflict: op.onConflict } : undefined);
       else if (op.type === 'delete') { let q = sb.from(op.table).delete(); for (const [k, v] of Object.entries(op.match)) q = q.eq(k, v); res = await q; }
-      if (res.error) { console.warn('sync', res.error); if (res.error.code === 'PGRST301' || /JWT/.test(res.error.message)) break; queue.shift(); }
-      else queue.shift();
+      if (res.error) { console.warn('sync', res.error); if (res.error.code === 'PGRST301' || /JWT/.test(res.error.message)) { inflight = null; break; } }
+      queue = queue.filter(q => q !== op); inflight = null;
       saveQueue();
     }
-  } catch (e) { console.warn('flush failed', e); }
+  } catch (e) { console.warn('flush failed', e); inflight = null; }
   flushing = false;
 }
 window.addEventListener('online', () => { S.online = true; flush(); render(); });
