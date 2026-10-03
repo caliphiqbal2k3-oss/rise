@@ -88,7 +88,7 @@ const DEF = {
   gymDays: [0, 1, 2, 3, 4], gymTimes: { 0: '18:30', 1: '18:30', 2: '18:30', 3: '18:30', 4: '18:30' }, gymNudge: 30,
   quranGoal: 30, quranTime: '21:00', waterGoal: 3, bodyDay: 5, bodyTime: '10:00', weeklyTime: '20:00', remindTime: '09:00',
   hijriAdjust: 0, hijriAnchor: null, fastDays: [1, 4],
-  reminders: { prayers: true, gym: true, quran: true, languages: true, study: true, exams: true, assignments: true, dates: true, zakat: true, body: true, import: true, weekly: true, fasts: false }
+  reminders: { custom: true, prayers: true, gym: true, quran: true, languages: true, study: true, exams: true, assignments: true, dates: true, zakat: true, body: true, import: true, weekly: true, fasts: false }
 };
 
 /* ---------------- state ---------------- */
@@ -239,6 +239,7 @@ function checklist(date) {
   L.push({ key: 'cardio', icon: 'walk', c: 'c5', title: 'Cardio', sub: cm ? `${cm} min` : 'Walk or bike', done: cm > 0, act: 'sheetCardio', arg: date });
   L.push({ key: 'sleep', icon: 'moon', c: 'c2', title: 'Sleep', sub: d.sleep != null ? `${d.sleep} hours` : 'How long did you sleep?', done: d.sleep != null, act: 'sheetSleep', arg: date });
   L.push({ key: 'water', icon: 'drop', c: 'c4', title: 'Water', sub: `${round(d.water || 0)} of ${S.settings.waterGoal} L`, done: (d.water || 0) >= S.settings.waterGoal, act: 'sheetWater', arg: date });
+  for (const m of items('reminder').filter(m => m.data.date === date).sort((a, b) => toMin(a.data.time) - toMin(b.data.time))) L.push({ key: 'rem' + m.id, icon: 'bell', c: 'c6', title: m.data.title, sub: `Reminder · ${fmt12(m.data.time)}${m.data.note ? ' · ' + m.data.note : ''}`, done: !!m.data.done, act: 'toggleReminder', arg: m.id, tick: true });
   for (const t of tasksFor(date)) L.push({ key: 'task' + t.id, icon: 'tasks', c: 'c1', title: t.data.title, sub: t.data.repeat === 'once' ? 'Today' : t.data.repeat === 'daily' ? 'Every day' : (t.data.weekdays || []).map(w => DOW[w]).join(', '), done: !!(d.tasks || {})[t.id], act: 'toggleTask', arg: t.id + '|' + date, tick: true });
   return L;
 }
@@ -276,7 +277,7 @@ function applyTheme() {
   const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = night ? '#0F1030' : '#FBF6EE';
 }
 const NAV = [['today', 'home', 'Today'], ['prayers', 'mosque', 'Prayers'], ['study', 'cap', 'Study'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
-const TAB_OF = { quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
+const TAB_OF = { reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
 function nav() { const cur = TAB_OF[S.view] || S.view; return `<nav class="nav">${NAV.map(([v, ic, l]) => `<button data-act="go" data-arg="${v}" class="${cur === v ? 'on' : ''}">${I[ic]}${l}</button>`).join('')}</nav>`; }
 function pageTop(title, backTo) { return `<div class="ph-top">${backTo ? `<button class="back" data-act="go" data-arg="${backTo}" aria-label="Back">${I.back}</button>` : ''}<h1>${esc(title)}</h1></div>`; }
 function ck(done) { return `<span class="ck ${done ? 'on' : ''}">${I.check}</span>`; }
@@ -313,7 +314,7 @@ function vToday() {
     <button class="card" data-act="sheetWater" data-arg="${t}">${icon('drop', 'c4')}<div class="pct b">${Math.min(100, Math.round(water / wg * 100))}%</div><div class="lbl">Water today</div><div class="big">${water} <span>L</span></div><div class="bar"><i style="width:${Math.min(100, water / wg * 100)}%;background:#3B82E8"></i></div></button>
    </div>
    <button class="score" data-act="go" data-arg="summary">${ring(score)}<div><h3>Daily score</h3><p>${prayerStreak()}-day prayer streak · ${qadaTotal} qada left<br>${gymT}</p></div></button>
-   <div class="panel"><div class="panel-h"><h2>Today's checklist</h2><button class="link" data-act="go" data-arg="tasks">Edit</button></div>
+   <div class="panel"><div class="panel-h"><h2>Today's checklist</h2><span><button class="link" data-act="sheetReminder" style="margin-right:14px">+ Reminder</button><button class="link" data-act="go" data-arg="tasks">Edit</button></span></div>
     ${L.map(x => `<button class="it" data-act="${x.act}" data-arg="${esc(x.arg)}">${x.dragon ? '<span class="dr"></span>' : icon(x.icon, x.c)}<span class="t"><b>${esc(x.title)}</b><span>${esc(x.sub)}</span></span>${ck(x.done)}</button>`).join('')}
    </div>
    <div class="sec"><h2>Countdowns</h2><button class="link" data-act="go" data-arg="study">See all</button></div>
@@ -468,7 +469,7 @@ function miniBars(vals, dates, max, color, label) {
 
 /* ---------- More ---------- */
 function vMore() {
-  const rows = [['quran', 'book', 'c3', 'Quran', `Page ${currentPage()} of 604`], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['zakat', 'crescent', 'c1', 'Zakat', items('zakat').length ? 'Date set' : 'No date set'], ['fasts', 'plate', 'c5', 'Fasts to make up', `${items('fast').reduce((a, f) => a + Math.max(0, f.data.total - f.data.done), 0)} remaining`], ['nazr', 'hand', 'c4', 'Nazr', `${items('nazr').filter(n => n.data.done < n.data.total).length} open`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
+  const rows = [['quran', 'book', 'c3', 'Quran', `Page ${currentPage()} of 604`], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['zakat', 'crescent', 'c1', 'Zakat', items('zakat').length ? 'Date set' : 'No date set'], ['fasts', 'plate', 'c5', 'Fasts to make up', `${items('fast').reduce((a, f) => a + Math.max(0, f.data.total - f.data.done), 0)} remaining`], ['nazr', 'hand', 'c4', 'Nazr', `${items('nazr').filter(n => n.data.done < n.data.total).length} open`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => !m.data.done && m.data.date >= today()).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
   return `<div class="page">${pageTop('More')}<div class="wrap"><div class="list">${rows.map(r => `<button class="row" data-act="go" data-arg="${r[0]}">${icon(r[1], r[2])}<span class="t"><b>${r[3]}</b><span>${r[4]}</span></span>${I.chev}</button>`).join('')}</div></div></div>`;
 }
 
@@ -539,6 +540,14 @@ function vNotes() {
   const L = items('note').sort((a, b) => (b.data.updated || '') > (a.data.updated || '') ? 1 : -1);
   return `<div class="page">${pageTop('Notes', 'more')}<div class="wrap"><div class="list">${L.length ? L.map(n => `<button class="row" data-act="sheetNote" data-arg="${n.id}">${icon('note', 'c3')}<span class="t"><b>${esc(n.data.title || 'Untitled')}</b><span>${esc((n.data.body || '').slice(0, 80))}</span></span></button>`).join('') : '<div class="empty">Write anything you want to keep</div>'}</div><button class="btn sec2 add" data-act="sheetNote">New note</button></div></div>`;
 }
+function vReminders() {
+  const t = today(), all = items('reminder').sort((a, b) => (a.data.date + a.data.time < b.data.date + b.data.time ? -1 : 1));
+  const up = all.filter(m => !m.data.done && m.data.date >= t), rest = all.filter(m => m.data.done || m.data.date < t).reverse();
+  const row = m => { const n = diffDays(t, m.data.date); return `<div class="row"><button class="ck ${m.data.done ? 'on' : ''}" data-act="toggleReminder" data-arg="${m.id}">${I.check}</button><button class="t" style="text-align:left" data-act="sheetReminder" data-arg="${m.id}"><b>${esc(m.data.title)}</b><span>${fmtDate(m.data.date)} · ${fmt12(m.data.time)}${m.data.note ? ' · ' + esc(m.data.note) : ''}</span></button>${!m.data.done && n >= 0 ? `<span class="tag ${n <= 1 ? 'red' : ''}">${n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n + ' days'}</span>` : ''}</div>`; };
+  return `<div class="page">${pageTop('My reminders', 'more')}<div class="wrap"><div class="list">${up.length ? up.map(row).join('') : '<div class="empty">Add something you want to be reminded about</div>'}</div>
+  <button class="btn add" data-act="sheetReminder">Add reminder</button>
+  ${rest.length ? `<div class="h2">Done and past</div><div class="list">${rest.slice(0, 30).map(row).join('')}</div>` : ''}</div></div>`;
+}
 function vTasks() {
   return `<div class="page">${pageTop('My tasks', 'more')}<div class="wrap"><p class="muted small" style="margin:0 6px">Prayers, gym, Quran, languages, cardio, sleep and water are always on your checklist. Add your own tasks here.</p>
   <div class="list">${items('task').length ? items('task').map(t => `<button class="row" data-act="sheetTask" data-arg="${t.id}">${icon('tasks', 'c1')}<span class="t"><b>${esc(t.data.title)}</b><span>${t.data.repeat === 'daily' ? 'Every day' : t.data.repeat === 'once' ? 'Once · ' + fmtDateY(t.data.date) : (t.data.weekdays || []).map(w => DOW[w]).join(', ')}</span></span>${I.chev}</button>`).join('') : '<div class="empty">No extra tasks yet</div>'}</div>
@@ -548,7 +557,7 @@ function vTasks() {
 /* ---------- Settings ---------- */
 function vSettings() {
   const st = S.settings, r = st.reminders, dates = Object.keys(S.times).sort(), lastT = dates.at(-1);
-  const remRows = [['prayers', 'Prayer times (Adhan)'], ['gym', 'Gym'], ['quran', 'Quran'], ['languages', 'Languages'], ['study', 'Study sessions'], ['exams', 'Exams (3, 2 and 1 day before)'], ['assignments', 'Assignments (1 week and 5 days before)'], ['dates', 'Important dates (2 weeks and 1 week before)'], ['zakat', 'Zakat (1 month and 1 week before)'], ['body', 'Weekly body measurements'], ['import', 'Import next month of prayer times'], ['weekly', 'Friday weekly summary'], ['fasts', 'Fasts to make up']];
+  const remRows = [['custom', 'My reminders'], ['prayers', 'Prayer times (Adhan)'], ['gym', 'Gym'], ['quran', 'Quran'], ['languages', 'Languages'], ['study', 'Study sessions'], ['exams', 'Exams (3, 2 and 1 day before)'], ['assignments', 'Assignments (1 week and 5 days before)'], ['dates', 'Important dates (2 weeks and 1 week before)'], ['zakat', 'Zakat (1 month and 1 week before)'], ['body', 'Weekly body measurements'], ['import', 'Import next month of prayer times'], ['weekly', 'Friday weekly summary'], ['fasts', 'Fasts to make up']];
   const perm = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
   return `<div class="page">${pageTop('Settings', 'more')}<div class="wrap">
   <div class="h2">You</div><div class="list">
@@ -726,6 +735,12 @@ const SHEETS = {
     openSheet(`<h2>${t ? 'Edit task' : 'Add task'}</h2>${fld('Task', inp('title', t?.data.title || ''))}${fld('Repeat', picks('repeat', [['daily', 'Every day'], ['weekdays', 'Chosen days'], ['once', 'Once']], [rep], false))}
     ${fld('Days (for chosen days)', picks('weekdays', weekdayOpts, (t?.data.weekdays || []).map(String)))}${fld('Date (for once)', inp('date', t?.data.date || today(), 'date'))}${saveBtns('saveTask', id || '', id ? 'delItemAct' : '')}`);
   },
+  sheetReminder(id) {
+    const m = id ? item(id) : null, now = new Date(); const later = new Date(now.getTime() + 3600e3);
+    openSheet(`<h2>${m ? 'Edit reminder' : 'New reminder'}</h2>${fld('Remind me to', inp('title', m?.data.title || '', 'text', 'placeholder="e.g. Call the bank"'))}
+    <div class="two">${fld('Date', inp('date', m?.data.date || today(), 'date'))}${fld('Time', inp('time', m?.data.time || `${pad(later.getHours())}:00`, 'time'))}</div>
+    ${fld('Note', inp('note', m?.data.note || '', 'text', 'placeholder="Optional"'))}${saveBtns('saveReminder', id || '', id ? 'delItemAct' : '')}`);
+  },
   sheetQadaAdd() { openSheet(`<h2>Add older missed prayers</h2><p class="small muted">For prayers missed before you started using Rise.</p>${fld('Prayer', picks('prayer', PR.map(p => [p, PN[p]]), ['fajr'], false))}${fld('How many', inp('count', '', 'number', 'inputmode="numeric"'))}${saveBtns('saveQadaAdd')}`); },
   sheetIqamah() { openSheet(`<h2>Iqamah after Adhan</h2><p class="small muted">Minutes after the Adhan.</p>${PR.map(p => `<div class="row"><span class="t"><b>${PN[p]}</b></span><input class="inp" name="iq_${p}" type="number" inputmode="numeric" value="${S.settings.iqamah[p]}" style="width:90px"></div>`).join('')}${saveBtns('saveIqamah')}`); },
   sheetName() { openSheet(`<h2>Your name</h2>${fld('Name', inp('name', S.settings.name))}${saveBtns('saveName')}`); },
@@ -786,6 +801,14 @@ const ACT = {
   nazrDone(id) { const n = item(id); const d = Math.min(n.data.total, n.data.done + 1); updItem(id, { done: d, ...(d >= n.data.total ? { doneAt: today() } : {}) }); render(); toast(d >= n.data.total ? 'Nazr fulfilled' : 'Recorded'); },
   saveNote(id) { const data = { title: val('title'), body: val('body'), updated: new Date().toISOString() }; if (!data.title && !data.body) return closeSheet(); id ? updItem(id, data) : addItem('note', data); done('Note saved'); },
   saveTask(id) { const data = { title: val('title'), repeat: picked('repeat')[0] || 'daily', weekdays: picked('weekdays').map(Number), date: val('date') }; if (!need(data.title, 'Enter the task')) return; if (data.repeat === 'weekdays' && !data.weekdays.length) return toast('Choose at least one day'); id ? updItem(id, data) : addItem('task', data); done('Task saved'); },
+  saveReminder(id) {
+    const data = { title: val('title'), date: val('date'), time: val('time'), note: val('note') };
+    if (!need(data.title, 'Enter what to remind you about') || !need(data.date, 'Pick a date') || !need(data.time, 'Pick a time')) return;
+    if (at(data.date, data.time) < new Date()) return toast('That time has already passed');
+    if (id) updItem(id, { ...data, done: false }); else addItem('reminder', { ...data, done: false });
+    done(`Reminder set for ${fmtDate(data.date)} at ${fmt12(data.time)}`);
+  },
+  toggleReminder(id) { const m = item(id); updItem(id, { done: !m.data.done }); render(); },
   delItemAct(id) { if (!confirm('Delete this?')) return; delItem(id); done('Deleted'); },
   theme(k) { S.settings.theme = k; saveSettings(); render(); },
   toggleRem(k) { S.settings.reminders[k] = !S.settings.reminders[k]; saveSettings(); render(); },
@@ -828,13 +851,14 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => { const el = e.target.closest('[data-on]'); if (el && ON[el.dataset.on]) ON[el.dataset.on](el); });
 
-const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, settings: vSettings, importTimes: vImport };
+const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, settings: vSettings, importTimes: vImport };
 
 /* ================= REMINDERS ================= */
 // Rise works out the reminders for the next 7 days and stores them; a small service on Supabase sends them on time.
 function buildReminders() {
   const st = S.settings, r = st.reminders, now = new Date(), t = today(), out = [];
   const push = (when, title, body, tag, url = './') => { if (when > now) out.push({ at: when.toISOString(), title, body, tag, url }); };
+  if (r.custom) for (const m of items('reminder')) if (!m.data.done && diffDays(t, m.data.date) <= 60) push(at(m.data.date, m.data.time), m.data.title, m.data.note || 'Your reminder from Rise', `rm-${m.id}`, './?v=reminders');
   for (let i = 0; i < 7; i++) {
     const d = addDays(t, i), wd = parseYmd(d).getDay(), dd = day(d);
     if (r.prayers) for (const p of PR) push(adhan(d, p), PN[p], `It's time for ${PN[p]} · iqamah in ${st.iqamah[p]} min`, `pr-${d}-${p}`, './?v=prayers');
