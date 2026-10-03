@@ -7,7 +7,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '5';
+const APP_VERSION = '6';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -18,7 +18,10 @@ const pad = n => String(n).padStart(2, '0');
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parseYmd = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
-const today = () => ymd(new Date());
+const calToday = () => ymd(new Date());
+// Rise's day runs from Fajr to Fajr: between midnight and Fajr it is still the previous day
+let _tdCache = { k: '', v: '' };
+const today = () => { const n = new Date(), c = ymd(n), k = c + ':' + n.getHours() + ':' + n.getMinutes(); if (_tdCache.k === k) return _tdCache.v; let v = c; try { if (n < adhan(c, 'fajr')) v = addDays(c, -1); } catch { } _tdCache = { k, v }; return v; };
 const diffDays = (a, b) => Math.round((parseYmd(b) - parseYmd(a)) / 864e5);
 const toMin = t => { if (!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const at = (date, time) => { const d = parseYmd(date); const m = toMin(time); d.setHours(Math.floor(m / 60), m % 60, 0, 0); return d; };
@@ -93,7 +96,7 @@ const DEF = {
 };
 
 /* ---------------- state ---------------- */
-const S = { user: null, settings: structuredClone(DEF), days: {}, items: [], times: {}, view: 'today', back: null, prayerDate: today(), calMonth: null, histTab: 'week', showPast: {}, online: navigator.onLine };
+const S = { user: null, settings: structuredClone(DEF), days: {}, items: [], times: {}, view: 'today', back: null, prayerDate: null, calMonth: null, histTab: 'week', showPast: {}, online: navigator.onLine };
 const cacheKey = () => 'rise-cache-' + (S.user?.id || '');
 const queueKey = () => 'rise-queue-' + (S.user?.id || '');
 function saveCache() { try { localStorage.setItem(cacheKey(), JSON.stringify({ settings: S.settings, days: S.days, items: S.items, times: S.times })); } catch { } }
@@ -192,7 +195,7 @@ function prayerState(now = new Date()) {
   const iq = cur ? new Date(cur.at.getTime() + (S.settings.iqamah[cur.p] || 0) * 60e3) : null;
   return { cur, next, iqamahAt: iq, inIqamah: !!(cur && iq > now) };
 }
-function prayerDay(now = new Date()) { const t = today(); return now < adhan(t, 'fajr') ? addDays(t, -1) : t; }
+function prayerDay() { return today(); }
 function hms(ms) { const s = Math.max(0, Math.floor(ms / 1000)); return `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`; }
 function hm(ms) { const m = Math.max(0, Math.ceil(ms / 60000)); const h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m} min`; }
 function isEnded(date, p, now = new Date()) { return prayerEnd(date, p) <= now; }
@@ -829,7 +832,7 @@ const ACT = {
     for (const r of pv.rows) S.times[r.day] = { fajr: r.fajr, sunrise: r.sunrise, dhuhr: r.dhuhr, asr: r.asr, maghrib: r.maghrib, isha: r.isha };
     enqueue({ type: 'upsert', table: 'prayer_times', key: 'import-' + pv.rows[0].day + '-' + pv.rows.length, onConflict: 'user_id,day', row: pv.rows.map(r => ({ user_id: S.user.id, ...r })) });
     if (pv.anchor) { const first = pv.rows[0].day; for (let off = -2; off <= 2; off++) { const u = uq(addDays(first, -off)); if (u.d === pv.anchor.d && u.m === pv.anchor.m && u.y === pv.anchor.y) { S.settings.hijriAnchor = { m: pv.anchor.m, y: pv.anchor.y, off }; S.settings.hijriAdjust = 0; saveSettings(); break; } } }
-    importPreview = null; S.view = 'prayers'; render(); toast(`Saved ${pv.rows.length} days of Awqaf times`);
+    importPreview = null; _tdCache.k = ''; S.view = 'prayers'; render(); toast(`Saved ${pv.rows.length} days of Awqaf times`);
   },
   backup() {
     const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), settings: S.settings, days: S.days, items: S.items, prayer_times: S.times }, null, 1)], { type: 'application/json' });
