@@ -1,6 +1,7 @@
 // Rise — personal app for prayers, Quran, study, languages, fitness and daily habits
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { calcTimes } from './praycalc.js';
+import morphdom from './morphdom.js';
 import { AZKAR, DUAS, AZKAR_QUOTE } from './azkar-data.js';
 
 const CFG = {
@@ -8,7 +9,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '13';
+const APP_VERSION = '14';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -36,10 +37,17 @@ const fmtDateY = s => { const d = parseYmd(s); return `${d.getDate()} ${MON[d.ge
 const round = (n, p = 2) => Math.round(n * 10 ** p) / 10 ** p;
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }));
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2400); }
+function toast(msg, undo) {
+  const t = $('#toast'); t.textContent = msg; t.classList.toggle('undo', !!undo);
+  if (undo) { const b = document.createElement('button'); b.textContent = 'Undo'; b.onclick = () => { t.classList.remove('show'); undo(); }; t.appendChild(b); }
+  t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), undo ? 5000 : 2400);
+}
+function deleteWithUndo(id, msg = 'Deleted') { const it = item(id); if (!it) return; const copy = structuredClone(it); delItem(id); toast(msg, () => { S.items.push(copy); putItem(copy); render(); }); }
+function dayWithUndo(date, fn, isUntick, msg = 'Unticked') { const prev = structuredClone(day(date)); setDay(date, fn); if (isUntick) toast(msg, () => { setDay(date, x => { for (const k of Object.keys(x)) delete x[k]; Object.assign(x, prev); }); render(); }); }
 function countdownText(days) { return days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `${days} days remaining`; }
 
 /* ---------------- icons ---------------- */
+const imgSrc = p => (p && p.startsWith('assets/') ? p.replace(/\.jpg$/, '.webp') : p);
 const P = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
 const I = {
   tasks: P('M7 4h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 4V3h6v1M8.5 11l1.5 1.5L13 9.5M8.5 17l1.5 1.5L13 15.5'),
@@ -75,6 +83,7 @@ const I = {
   maghrib: P('M3 18h18M7 14a5 5 0 0 1 10 0M12 3v6M9 6l3 3 3-3M4 11l1.5 1M20 11l-1.5 1'),
   isha: P('M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5zM17 4l.6 1.4L19 6l-1.4.6L17 8l-.6-1.4L15 6l1.4-.6z'),
   beads: P('M12 3a2 2 0 1 0 0 .01M7 5.5a2 2 0 1 0 0 .01M17 5.5a2 2 0 1 0 0 .01M4.5 10a2 2 0 1 0 0 .01M19.5 10a2 2 0 1 0 0 .01M6 15a2 2 0 1 0 0 .01M18 15a2 2 0 1 0 0 .01M12 14v4M10 20h4l-2 2z'),
+  search: P('M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.5-4.5'),
   heart: P('M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z'),
   lock: P('M6 11h12v10H6zM8 11V8a4 4 0 0 1 8 0v3'),
   pin: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#8A6A2E"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>'
@@ -151,11 +160,16 @@ function updItem(id, patch) { const it = item(id); if (!it) return; it.data = { 
 function putItem(it) { enqueue({ type: 'upsert', table: 'items', key: it.id, row: { id: it.id, user_id: S.user.id, kind: it.kind, data: it.data, created_at: it.created_at, updated_at: new Date().toISOString() } }); }
 function delItem(id) { S.items = S.items.filter(i => i.id !== id); enqueue({ type: 'delete', table: 'items', match: { id } }); }
 
+let loadOlderDays = async () => { };
 async function loadAll() {
   const all = async (table, sel = '*') => { let out = [], from = 0; for (; ;) { const { data, error } = await sb.from(table).select(sel).range(from, from + 999); if (error) throw error; out = out.concat(data); if (data.length < 1000) break; from += 1000; } return out; };
-  const [st, ds, its, tms] = await Promise.all([all('settings'), all('days'), all('items'), all('prayer_times')]);
+  const cut = addDays(calToday(), -120); S.daysCut = cut; S.allDays = false;
+  const allF = async (table, f) => { let out = [], from = 0; for (; ;) { const { data, error } = await f(sb.from(table).select('*')).range(from, from + 999); if (error) throw error; out = out.concat(data); if (data.length < 1000) break; from += 1000; } return out; };
+  const [st, ds, its, tms] = await Promise.all([all('settings'), allF('days', q => q.gte('day', cut)), all('items'), all('prayer_times')]);
   S.settings = mergeDef(st[0]?.data);
-  const days = {}; for (const r of ds) days[r.day] = r.data; S.days = days;
+  const days = {}; for (const [k, v] of Object.entries(S.days)) if (k < cut) days[k] = v; for (const r of ds) days[r.day] = r.data; S.days = days;
+  loadOlderDays = async () => { try { const old = await allF('days', q => q.lt('day', cut)); for (const r of old) if (!queue.some(o => o.table === 'days' && o.key === r.day)) S.days[r.day] = r.data; S.allDays = true; saveCache(); render(); } catch (e) { console.warn('older days', e); } };
+  setTimeout(() => loadOlderDays(), 1500);
   // keep local edits that have not reached the server yet
   for (const op of queue) { if (op.table === 'days' && op.type === 'upsert') S.days[op.row.day] = op.row.data; if (op.table === 'settings') S.settings = mergeDef(op.row.data); }
   const pendingItems = queue.filter(q => q.table === 'items' && q.type === 'upsert').map(q => q.row);
@@ -290,8 +304,9 @@ function applyTheme() {
   const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = night ? '#0F1030' : '#FBF6EE';
 }
 const NAV = [['today', 'home', 'Today'], ['prayers', 'mosque', 'Prayers'], ['azkar', 'beads', 'Azkar'], ['study', 'cap', 'Study'], ['rel', 'heart', 'People'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
-const TAB_OF = { notifs: 'today', person: 'rel', azkarEdit: 'azkar', duaEdit: 'azkar', reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
-function nav() { const cur = TAB_OF[S.view] || S.view; return `<nav class="nav">${NAV.map(([v, ic, l]) => `<button data-act="go" data-arg="${v}" class="${cur === v ? 'on' : ''}">${I[ic]}${l}</button>`).join('')}</nav>`; }
+const TAB_OF = { search: 'more', reports: 'more', notifs: 'today', person: 'rel', azkarEdit: 'azkar', duaEdit: 'azkar', reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
+const MAIN = ['today', 'prayers', 'azkar', 'study', 'rel', 'fitness', 'more'];
+function nav() { const cur = TAB_OF[S.view] || S.view; return `${MAIN.includes(S.view) && !(S.view === 'rel' && relLocked()) ? '<button class="fab" data-act="quickAdd" aria-label="Quick add">+</button>' : ''}<nav class="nav">${NAV.map(([v, ic, l]) => `<button data-act="go" data-arg="${v}" class="${cur === v ? 'on' : ''}">${I[ic]}${l}</button>`).join('')}</nav>`; }
 function pageTop(title, backTo) { return `<div class="ph-top">${backTo ? `<button class="back" data-act="go" data-arg="${backTo}" aria-label="Back">${I.back}</button>` : ''}<h1>${esc(title)}</h1></div>`; }
 function ck(done) { return `<span class="ck ${done ? 'on' : ''}">${I.check}</span>`; }
 function icon(name, c) { return `<span class="ic ${c}">${I[name]}</span>`; }
@@ -300,7 +315,19 @@ function render() {
   if (!S.user) return;
   applyTheme();
   const v = VIEWS[S.view] || VIEWS.today;
-  $('#app').innerHTML = (S.online ? '' : '<div class="offline">Offline · changes will sync later</div>') + v() + nav();
+  const html = (S.online ? '' : '<div class="offline">Offline · changes will sync later</div>') + v() + nav();
+  const viewChanged = S._lastView !== S.view; S._lastView = S.view;
+  const app = $('#app'), next = document.createElement('div'); next.id = 'app'; next.innerHTML = html;
+  if (!app.firstElementChild || app.querySelector('.boot') || app.querySelector('.auth')) app.innerHTML = html;
+  else morphdom(app, next, {
+    onBeforeElUpdated(from, to) {
+      if (from === document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(from.tagName)) return false;
+      if (from.id && ['pc-cd', 'disc-cd', 'arc-dot', 'arc-prog'].includes(from.id) && from.id === to.id) return false;
+      if (from.classList?.contains('nav') || from.classList?.contains('fab')) to.classList.toggle('hide', !viewChanged && from.classList.contains('hide'));
+      if (from.isEqualNode(to)) return false;
+      return true;
+    }
+  });
   if (S.view === 'today' || S.view === 'prayers') tick();
 }
 
@@ -482,7 +509,7 @@ function miniBars(vals, dates, max, color, label) {
 
 /* ---------- More ---------- */
 function vMore() {
-  const rows = [['quran', 'book', 'c3', 'Quran', `Page ${currentPage()} of 604`], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['zakat', 'crescent', 'c1', 'Zakat', items('zakat').length ? 'Date set' : 'No date set'], ['fasts', 'plate', 'c5', 'Fasts to make up', `${items('fast').reduce((a, f) => a + Math.max(0, f.data.total - f.data.done), 0)} remaining`], ['nazr', 'hand', 'c4', 'Nazr', `${items('nazr').filter(n => n.data.done < n.data.total).length} open`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => !m.data.done && m.data.date >= today()).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
+  const rows = [['search', 'search', 'c2', 'Search', 'Notes, people, reminders, azkar…'], ['reports', 'chart', 'c5', 'Reports', 'Monthly, yearly and year in review'], ['quran', 'book', 'c3', 'Quran', `Page ${currentPage()} of 604`], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['zakat', 'crescent', 'c1', 'Zakat', items('zakat').length ? 'Date set' : 'No date set'], ['fasts', 'plate', 'c5', 'Fasts to make up', `${items('fast').reduce((a, f) => a + Math.max(0, f.data.total - f.data.done), 0)} remaining`], ['nazr', 'hand', 'c4', 'Nazr', `${items('nazr').filter(n => n.data.done < n.data.total).length} open`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => !m.data.done && m.data.date >= today()).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
   return `<div class="page">${pageTop('More')}<div class="wrap"><div class="list">${rows.map(r => `<button class="row" data-act="go" data-arg="${r[0]}">${icon(r[1], r[2])}<span class="t"><b>${r[3]}</b><span>${r[4]}</span></span>${I.chev}</button>`).join('')}</div></div></div>`;
 }
 
@@ -572,7 +599,7 @@ function vAzkar() {
   if (tab === 'duas') {
     const L = duasList();
     return head + `<div class="hstack" style="justify-content:space-between;margin:2px 4px 10px"><span class="small muted">${L.length} du'as · tap a page to enlarge</span><button class="link" data-act="go" data-arg="duaEdit">Edit</button></div>
-    ${L.map(d => d.data.img ? `<button class="dua-img" data-act="viewDua" data-arg="${d.id}"><img loading="lazy" src="${esc(d.data.img)}" ${d.data.w ? `width="${d.data.w}" height="${d.data.h}"` : ''} alt="Du'a"></button>` : `<div class="dua-text" dir="rtl">${esc(d.data.text || '')}</div>`).join('') || '<div class="list"><div class="empty">No du\'as yet</div></div>'}
+    ${L.map(d => d.data.img ? `<button class="dua-img" data-act="viewDua" data-arg="${d.id}"><img loading="lazy" decoding="async" src="${esc(imgSrc(d.data.img))}" ${d.data.w ? `width="${d.data.w}" height="${d.data.h}"` : ''} alt="Du'a"></button>` : `<div class="dua-text" dir="rtl">${esc(d.data.text || '')}</div>`).join('') || '<div class="list"><div class="empty">No du\'as yet</div></div>'}
     <button class="btn sec2 add" data-act="sheetDuaAdd">Add du'a</button></div></div>`;
   }
   const t = today(), ad = day(t).azkar || {}, c = ad[tab] || {}, L = zikrs(), doneN = L.filter(z => (c[z.id] || 0) >= z.data.count).length, isDone = ad[tab + 'Done'];
@@ -591,7 +618,7 @@ function vAzkarEdit() {
 }
 function vDuaEdit() {
   const L = duasList();
-  return `<div class="page">${pageTop("Edit du'as", 'azkar')}<div class="wrap"><p class="small muted" style="margin:0 6px">Move pages up or down, or delete ones you don't need.</p><div class="list">${L.map((d, i) => `<div class="row"><div class="mv"><button data-act="mvDua" data-arg="${d.id}|-1" ${i ? '' : 'disabled'}>▲</button><button data-act="mvDua" data-arg="${d.id}|1" ${i < L.length - 1 ? '' : 'disabled'}>▼</button></div>${d.data.img ? `<img class="dua-thumb" loading="lazy" src="${esc(d.data.img)}" alt="">` : `<span class="t" dir="rtl" style="text-align:right">${esc((d.data.text || '').slice(0, 70))}</span>`}<span style="flex:1"></span><span class="small muted">${i + 1}</span><button class="link" style="color:var(--danger);margin-left:10px" data-act="delDua" data-arg="${d.id}">Delete</button></div>`).join('')}</div>
+  return `<div class="page">${pageTop("Edit du'as", 'azkar')}<div class="wrap"><p class="small muted" style="margin:0 6px">Move pages up or down, or delete ones you don't need.</p><div class="list">${L.map((d, i) => `<div class="row"><div class="mv"><button data-act="mvDua" data-arg="${d.id}|-1" ${i ? '' : 'disabled'}>▲</button><button data-act="mvDua" data-arg="${d.id}|1" ${i < L.length - 1 ? '' : 'disabled'}>▼</button></div>${d.data.img ? `<img class="dua-thumb" loading="lazy" src="${esc(imgSrc(d.data.img))}" alt="">` : `<span class="t" dir="rtl" style="text-align:right">${esc((d.data.text || '').slice(0, 70))}</span>`}<span style="flex:1"></span><span class="small muted">${i + 1}</span><button class="link" style="color:var(--danger);margin-left:10px" data-act="delDua" data-arg="${d.id}">Delete</button></div>`).join('')}</div>
   <button class="btn sec2 add" data-act="sheetDuaAdd">Add du'a</button></div></div>`;
 }
 /* ---------- Relationships ---------- */
@@ -668,6 +695,109 @@ function vNotifs() {
   <div class="h2">Received today</div><div class="list">${got.length ? got.map(x => `<div class="row"><span style="width:62px;font-weight:600;color:var(--gold);font-size:13px">${hhmm(x.at)}</span><span class="t"><b>${esc(x.title)}</b><span>${esc(x.body || '')}</span></span></div>`).join('') : '<div class="empty">Nothing yet today</div>'}</div>
   <p class="small muted center mt2">Prayer and gym notifications aren't listed here.</p></div></div>`;
 }
+/* ---------- Search ---------- */
+function vSearch() {
+  const q = (S.q || '').trim().toLowerCase(), R = [];
+  const has = (...xs) => xs.some(x => x && String(x).toLowerCase().includes(q));
+  if (q.length >= 2) {
+    for (const n of items('note')) if (has(n.data.title, n.data.body)) R.push(['note', 'Note', n.data.title || 'Untitled', (n.data.body || '').slice(0, 80), 'sheetNote', n.id]);
+    if (!relLocked()) for (const p of relPeople()) {
+      const ev = (p.data.events || []).map(e => e.text).join(' '), fu = (p.data.followups || []).map(f => f.text).join(' ');
+      if (has(p.data.name, p.data.notes, ev, fu, ...Object.values(p.data.info || {}))) R.push(['heart', 'Person', p.data.name, p.data.status, 'openPerson', p.id]);
+    }
+    for (const m of items('reminder')) if (has(m.data.title, m.data.note)) R.push(['bell', 'Reminder', m.data.title, fmtDate(m.data.date) + ' · ' + fmt12(m.data.time), 'sheetReminder', m.id]);
+    for (const t of items('task')) if (has(t.data.title)) R.push(['tasks', 'Task', t.data.title, '', 'sheetTask', t.id]);
+    for (const e of items('exam')) if (has(e.data.subject, e.data.type, e.data.chapters)) R.push(['cap', 'Exam', e.data.subject + ' ' + e.data.type, fmtDate(e.data.date), 'sheetExam', e.id]);
+    for (const a of items('assignment')) if (has(a.data.title, a.data.subject)) R.push(['doc', 'Assignment', a.data.title, 'Due ' + fmtDate(a.data.due), 'sheetAsg', a.id]);
+    for (const z of zikrs()) if (has(z.data.title, z.data.text, z.data.masa)) R.push(['beads', 'Zikr', z.data.title || z.data.text.slice(0, 50), '×' + z.data.count, 'sheetZikr', z.id]);
+    for (const d of duasList()) if (d.data.text && has(d.data.text)) R.push(['beads', "Du'a", d.data.text.slice(0, 60), '', 'goAzkar', 'duas']);
+    for (const e of items('event')) if (has(e.data.title, e.data.note)) R.push(['gift', 'Date', e.data.title, `${e.data.day} ${MONL[e.data.month - 1]}`, 'sheetEvent', e.id]);
+    for (const n of items('nazr')) if (has(n.data.title, n.data.note)) R.push(['hand', 'Nazr', n.data.title, `${n.data.done} of ${n.data.total}`, 'sheetNazr', n.id]);
+    for (const l of items('language')) if (has(l.data.name)) R.push(['lang', 'Language', l.data.name, l.data.minutes + ' min a day', 'sheetLang', l.id]);
+  }
+  return `<div class="page">${pageTop('Search', 'more')}<div class="wrap"><input class="inp" type="search" placeholder="Search notes, people, reminders, azkar…" value="${esc(S.q || '')}" data-on="search">
+  <div class="list">${q.length < 2 ? '<div class="empty">Type at least 2 letters</div>' : R.length ? R.map(r => `<button class="row" data-act="${r[4]}" data-arg="${r[5]}">${icon(r[0], 'c2')}<span class="t"><b>${esc(r[2])}</b><span>${r[1]}${r[3] ? ' · ' + esc(r[3]) : ''}</span></span></button>`).join('') : '<div class="empty">No results</div>'}</div>
+  <p class="small muted center mt">Du'a pages saved as pictures can't be searched.</p></div></div>`;
+}
+
+/* ---------- Reports ---------- */
+function periodStats(from, to) {
+  const t = today(); if (to > t) to = t;
+  const start = S.settings.startDate || t; if (from < start) from = start;
+  const s = { prayed: 0, possible: 0, gym: 0, gymDays: 0, cardio: 0, quranMin: 0, pages: 0, sleep: [], water: [], bestStreak: 0, full: 0, lang: {}, qadaMade: 0, days: 0 };
+  if (from > to) return s;
+  let run = 0; const now = new Date();
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    s.days++;
+    const x = day(d), pr = x.prayers || {}, c = PR.filter(p => pr[p]).length;
+    s.prayed += c; s.possible += PR.filter(p => pr[p] || isEnded(d, p, now)).length;
+    if (c === 5) { s.full++; run++; s.bestStreak = Math.max(s.bestStreak, run); } else if (d !== t) run = 0;
+    if (isGymDay(d)) { s.gymDays++; if ((x.gym || {}).status === 'went') s.gym++; }
+    s.cardio += (x.cardio || []).reduce((a, k) => a + (+k.min || 0), 0);
+    if (x.sleep != null) s.sleep.push(+x.sleep);
+    if (x.water) s.water.push(+x.water);
+  }
+  for (const q of items('quran')) if (q.data.date >= from && q.data.date <= to) s.quranMin += +q.data.minutes || 0;
+  let prev = null;
+  for (const q of quranLogs()) { const p = +q.data.page || 0; if (q.data.date >= from && q.data.date <= to) s.pages += prev == null ? 0 : (p >= prev ? p - prev : p); prev = p; }
+  for (const l of items('langlog')) if (l.data.date >= from && l.data.date <= to) { const n = item(l.data.langId)?.data.name || 'Language'; s.lang[n] = (s.lang[n] || 0) + (+l.data.minutes || 0); }
+  s.qadaMade = items('qada_done').filter(q => q.data.date >= from && q.data.date <= to).length;
+  return s;
+}
+const avg = a => a.length ? round(a.reduce((x, y) => x + y, 0) / a.length, 1) : 0;
+function bars(vals, labels, color, fmt = v => v) {
+  const max = Math.max(1, ...vals), W = 330, H = 120, bw = W / vals.length;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H + 18}" style="height:auto">${vals.map((v, i) => {
+    const h = v / max * H;
+    return `<rect x="${i * bw + bw * .18}" y="${H - h}" width="${bw * .64}" height="${Math.max(h, v ? 2 : 0)}" rx="3" fill="${color}"/>${v && vals.length <= 12 ? `<text x="${i * bw + bw / 2}" y="${H - h - 3}" font-size="8" text-anchor="middle" fill="currentColor" opacity=".75">${fmt(v)}</text>` : ''}<text x="${i * bw + bw / 2}" y="${H + 13}" font-size="8.5" text-anchor="middle" fill="currentColor" opacity=".55">${labels[i]}</text>`;
+  }).join('')}</svg>`;
+}
+function vReports() {
+  if (!S.allDays) setTimeout(() => loadOlderDays(), 0);
+  const tdy = parseYmd(today()), mode = S.repMode || 'year', Y = S.repYear || tdy.getFullYear(), M = S.repMonth ?? tdy.getMonth();
+  const head = `<div class="page">${pageTop('Reports', 'more')}<div class="wrap"><div class="tabs">${[['year', 'Year'], ['month', 'Month'], ['review', 'Year in review']].map(([k, l]) => `<button class="${mode === k ? 'on' : ''}" data-act="repMode" data-arg="${k}">${l}</button>`).join('')}</div>`;
+  const per = mode === 'month' ? `${MONL[M]} ${Y}` : `${Y}`;
+  const navp = `<div class="dnav list" style="padding:6px"><button data-act="repMove" data-arg="-1">‹</button><b>${per}</b><button data-act="repMove" data-arg="1">›</button></div>`;
+  const tile = (v, l) => `<div><b>${v}</b><span>${l}</span></div>`;
+  const table = rows => `<div class="list">${rows.map(r => `<div class="row"><span class="t"><b>${esc(r[0])}</b></span><span class="r" style="color:var(--ink);font-weight:600">${r[1]}</span></div>`).join('')}</div>`;
+  const box = (title, body) => `<div class="list" style="padding:14px"><b>${title}</b>${body}</div>`;
+  if (mode === 'month') {
+    const from = ymd(new Date(Y, M, 1)), dim = new Date(Y, M + 1, 0).getDate(), to = ymd(new Date(Y, M, dim)), s = periodStats(from, to);
+    const ds = [...Array(dim)].map((_, i) => ymd(new Date(Y, M, i + 1))), lab = ds.map((d, i) => (i + 1) % 5 === 1 ? i + 1 : '');
+    return head + navp + `<div class="list" style="padding:14px"><div class="stat rep">${tile(s.possible ? Math.round(s.prayed / s.possible * 100) + '%' : '–', 'prayed')}${tile(s.full, 'full days')}${tile(s.gym + '/' + s.gymDays, 'gym')}${tile(s.quranMin, 'Quran min')}</div></div>
+    ${box('Prayers each day', bars(ds.map(d => d > today() ? 0 : prayedCount(d)), lab, '#7B4FE0'))}
+    ${box('Quran minutes', bars(ds.map(d => quranMinutes(d)), lab, '#F0A43A'))}
+    ${box('Sleep (hours)', bars(ds.map(d => +(day(d).sleep || 0)), lab, '#6A45C2', v => round(v, 1)))}
+    ${box('Water (litres)', bars(ds.map(d => +(day(d).water || 0)), lab, '#3B82E8', v => round(v, 1)))}
+    ${table([['Gym sessions', `${s.gym} of ${s.gymDays} gym days`], ['Cardio', `${s.cardio} min`], ['Quran pages read', s.pages], ...Object.entries(s.lang).map(([n, m]) => [n, m + ' min']), ['Qada made up', s.qadaMade], ['Average sleep', s.sleep.length ? avg(s.sleep) + ' h' : '–'], ['Average water', s.water.length ? avg(s.water) + ' L' : '–']])}</div></div>`;
+  }
+  const months = [...Array(12)].map((_, m) => periodStats(ymd(new Date(Y, m, 1)), ymd(new Date(Y, m + 1, 0))));
+  const ml = MON.map(m => m[0]);
+  if (mode === 'year') {
+    let heat = '';
+    for (let m = 0; m < 12; m++) {
+      heat += `<div class="hm-row"><span>${MON[m]}</span>`;
+      const dim = new Date(Y, m + 1, 0).getDate();
+      for (let d = 1; d <= 31; d++) {
+        if (d > dim) { heat += '<i class="hm-x"></i>'; continue; }
+        const s = ymd(new Date(Y, m, d));
+        heat += `<i class="${s > today() || s < (S.settings.startDate || today()) ? 'lvx' : 'lv' + prayedCount(s)}"></i>`;
+      }
+      heat += '</div>';
+    }
+    return head + navp + box(`Prayers · every day of ${Y}`, `<div class="hm mt">${heat}</div><p class="small muted mt">Green = all 5, red = none.</p>`)
+      + box('Prayed each month (%)', bars(months.map(s => s.possible ? Math.round(s.prayed / s.possible * 100) : 0), ml, '#7B4FE0', v => v + '%'))
+      + box('Gym sessions', bars(months.map(s => s.gym), ml, '#A0651A'))
+      + box('Quran minutes', bars(months.map(s => s.quranMin), ml, '#F0A43A'))
+      + langs().map(l => box(`${esc(l.data.name)} minutes`, bars(months.map(s => s.lang[l.data.name] || 0), ml, '#2E7A50'))).join('')
+      + '</div></div>';
+  }
+  const s = periodStats(`${Y}-01-01`, `${Y}-12-31`);
+  const best = months.map((m, i) => [i, m.possible ? m.prayed / m.possible : -1]).sort((a, b) => b[1] - a[1])[0];
+  const rows = [['Prayers prayed', `${s.prayed} (${s.possible ? Math.round(s.prayed / s.possible * 100) : 0}%)`], ['Days with all 5 prayers', s.full], ['Best prayer streak', plural(s.bestStreak, 'day')], ['Qada made up', s.qadaMade], ['Gym sessions', s.gym], ['Cardio', `${s.cardio} min`], ['Quran', `${s.quranMin} min · ${s.pages} pages`], ['Quran completed', plural(items('khatam').filter(k => (k.data.date || '').startsWith(String(Y))).length, 'time')], ...Object.entries(s.lang).map(([n, m]) => [n, `${round(m / 60, 1)} hours`]), ['Average sleep', s.sleep.length ? avg(s.sleep) + ' h' : '–'], ['Average water', s.water.length ? avg(s.water) + ' L' : '–'], ['Best month for prayers', best && best[1] >= 0 ? MONL[best[0]] : '–']];
+  return head + navp + `<div class="score" style="margin-top:12px">${ring(s.possible ? Math.round(s.prayed / s.possible * 100) : 0)}<div><h3>${Y} in review</h3><p>${plural(s.days, 'day')} tracked with Rise</p></div></div>${table(rows)}</div></div>`;
+}
+
 function vTasks() {
   return `<div class="page">${pageTop('My tasks', 'more')}<div class="wrap"><p class="muted small" style="margin:0 6px">Prayers, gym, Quran, languages, cardio, sleep and water are always on your checklist. Add your own tasks here.</p>
   <div class="list">${items('task').length ? items('task').map(t => `<button class="row" data-act="sheetTask" data-arg="${t.id}">${icon('tasks', 'c1')}<span class="t"><b>${esc(t.data.title)}</b><span>${t.data.repeat === 'daily' ? 'Every day' : t.data.repeat === 'once' ? 'Once · ' + fmtDateY(t.data.date) : (t.data.weekdays || []).map(w => DOW[w]).join(', ')}</span></span>${I.chev}</button>`).join('') : '<div class="empty">No extra tasks yet</div>'}</div>
@@ -895,6 +1025,16 @@ const SHEETS = {
     ${fld('New PIN', '<input name="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off">')}${fld('Repeat PIN', '<input name="pin2" type="password" inputmode="numeric" maxlength="8" autocomplete="off">')}
     <div class="actions">${S.settings.relPin ? '<button class="btn danger" data-act="relPinRemove">Remove PIN</button>' : ''}<button class="btn" data-act="saveRelPin">Save</button></div>`);
   },
+  quickAdd() {
+    const t = today(), ls = langs();
+    const b = (act, arg, ic, c, label) => `<button class="qa" data-act="${act}" data-arg="${arg}">${icon(ic, c)}<span>${label}</span></button>`;
+    openSheet(`<h2>Quick add</h2><div class="qa-grid">
+      ${b('qaWater', '0.25', 'drop', 'c4', '+0.25 L water')}${b('qaWater', '0.5', 'drop', 'c4', '+0.5 L water')}
+      ${b('sheetQuran', t, 'book', 'c3', 'Quran reading')}${b('sheetCardio', t, 'walk', 'c5', 'Cardio')}
+      ${b('sheetReminder', '', 'bell', 'c6', 'Reminder')}${b('sheetNote', '', 'note', 'c3', 'Note')}
+      ${b('sheetSleep', t, 'moon', 'c2', 'Sleep')}${isGymDay(t) ? b('sheetGym', t, 'dumbbell', 'c1', 'Gym check-in') : b('sheetTask', '', 'tasks', 'c1', 'Task')}
+      ${ls.map(l => b('sheetLangLog', l.id, 'lang', 'c5', esc(l.data.name))).join('')}</div>`);
+  },
   sheetQadaAdd() { openSheet(`<h2>Add older missed prayers</h2><p class="small muted">For prayers missed before you started using Rise.</p>${fld('Prayer', picks('prayer', PR.map(p => [p, PN[p]]), ['fajr'], false))}${fld('How many', inp('count', '', 'number', 'inputmode="numeric"'))}${saveBtns('saveQadaAdd')}`); },
   sheetIqamah() { openSheet(`<h2>Iqamah after Adhan</h2><p class="small muted">Minutes after the Adhan.</p>${PR.map(p => `<div class="row"><span class="t"><b>${PN[p]}</b></span><input class="inp" name="iq_${p}" type="number" inputmode="numeric" value="${S.settings.iqamah[p]}" style="width:90px"></div>`).join('')}${saveBtns('saveIqamah')}`); },
   sheetName() { openSheet(`<h2>Your name</h2>${fld('Name', inp('name', S.settings.name))}${saveBtns('saveName')}`); },
@@ -914,7 +1054,7 @@ const ACT = {
   pGoDate(d) { S.prayerDate = d; render(); window.scrollTo({ top: 300, behavior: 'smooth' }); },
   calMove(n) { const t = parseYmd(today()); const cm = S.calMonth || [t.getFullYear(), t.getMonth()]; const d = new Date(cm[0], cm[1] + +n, 1); S.calMonth = [d.getFullYear(), d.getMonth()]; render(); },
   histTab(k) { S.histTab = k; render(); },
-  togglePrayer(p) { const d = S.prayerDate; if (d > today()) return toast("You can't tick a future day"); setDay(d, x => { x.prayers = x.prayers || {}; x.prayers[p] = !x.prayers[p]; }); render(); },
+  togglePrayer(p) { const d = S.prayerDate; if (d > today()) return toast("You can't tick a future day"); const was = !!(day(d).prayers || {})[p]; dayWithUndo(d, x => { x.prayers = x.prayers || {}; x.prayers[p] = !x.prayers[p]; }, was, PN[p] + ' unticked'); render(); },
   qadaDone(p) { addItem('qada_done', { prayer: p, date: today() }); render(); toast(`${PN[p]} qada recorded`); },
   saveQadaAdd() { const c = num('count'); const p = picked('prayer')[0]; if (!need(c, 'Enter how many')) return; addItem('qada_add', { prayer: p, count: c }); done(`Added ${c} ${PN[p]}`); },
   saveGym(date) { const st = picked('status')[0]; if (!st) return toast('Choose Went or Didn\'t go'); setDay(date, x => { x.gym = { status: st, trained: st === 'went' ? picked('trained') : [], note: val('note') }; }); done('Gym saved'); },
@@ -933,8 +1073,8 @@ const ACT = {
     done('Saved');
   },
   delLang(id) { if (!confirm('Remove this language? Choose OK to remove it. Its history is kept unless you also delete the sessions.')) return; delItem(id); done('Language removed'); },
-  toggleSession(arg) { const [id, date] = arg.split('|'); setDay(date, x => { x.sessions = x.sessions || {}; x.sessions[id] = !x.sessions[id]; }); render(); },
-  toggleTask(arg) { const [id, date] = arg.split('|'); setDay(date, x => { x.tasks = x.tasks || {}; x.tasks[id] = !x.tasks[id]; }); render(); },
+  toggleSession(arg) { const [id, date] = arg.split('|'); const was = !!(day(date).sessions || {})[id]; dayWithUndo(date, x => { x.sessions = x.sessions || {}; x.sessions[id] = !x.sessions[id]; }, was); render(); },
+  toggleTask(arg) { const [id, date] = arg.split('|'); const was = !!(day(date).tasks || {})[id]; dayWithUndo(date, x => { x.tasks = x.tasks || {}; x.tasks[id] = !x.tasks[id]; }, was); render(); },
   saveCardio(date) { const m = num('min'); if (!need(m, 'Enter minutes')) return; setDay(date, x => { x.cardio = x.cardio || []; x.cardio.push({ type: picked('type')[0] || 'Walk', min: m, incline: num('incline') }); }); done('Cardio saved'); },
   delCardio(arg) { const [date, i] = arg.split('|'); setDay(date, x => { x.cardio.splice(+i, 1); }); SHEETS.sheetCardio(date); render(); },
   saveSleep(date) { const s = num('sleep'); setDay(date, x => { if (s == null) delete x.sleep; else x.sleep = s; }); done('Saved'); },
@@ -962,9 +1102,9 @@ const ACT = {
     if (id) updItem(id, { ...data, done: false }); else addItem('reminder', { ...data, done: false });
     done(`Reminder set for ${fmtDate(data.date)} at ${fmt12(data.time)}`);
   },
-  toggleReminder(id) { const m = item(id); updItem(id, { done: !m.data.done }); render(); },
+  toggleReminder(id) { const m = item(id), was = m.data.done; updItem(id, { done: !was }); render(); if (was) toast('Unticked', () => { updItem(id, { done: true }); render(); }); },
   goAzkar(t) { S.azTab = t; ACT.go('azkar'); },
-  azTab(t) { S.azTab = t; render(); window.scrollTo(0, 0); },
+  azTab(t) { S.azTab = t; render(); window.scrollTo(0, 0); if (t === 'duas') prefetchDuas(); },
   zikrTap(id) {
     const tab = S.azTab, z = item(id), t = today();
     setDay(t, x => { x.azkar = x.azkar || {}; const c = x.azkar[tab] = x.azkar[tab] || {}; c[id] = (c[id] || 0) >= z.data.count ? 0 : (c[id] || 0) + 1;
@@ -975,11 +1115,11 @@ const ACT = {
   },
   azFinish(tab) { setDay(today(), x => { x.azkar = x.azkar || {}; const c = x.azkar[tab] = {}; for (const z of zikrs()) c[z.id] = z.data.count; x.azkar[tab + 'Done'] = true; }); render(); toast('تقبل الله'); },
   azReset(tab) { if (!confirm('Reset the counters for this list today?')) return; setDay(today(), x => { x.azkar = x.azkar || {}; x.azkar[tab] = {}; x.azkar[tab + 'Done'] = false; }); render(); },
-  viewSheet() { openViewer('assets/duas/azkar-sheet.jpg'); },
-  viewDua(id) { const d = item(id); if (d?.data.img) openViewer(d.data.img); },
+  viewSheet() { openViewer('assets/duas/azkar-sheet.webp'); },
+  viewDua(id) { const d = item(id); if (d?.data.img) openViewer(imgSrc(d.data.img)); },
   mvZikr(arg) { const [id, dir] = arg.split('|'); swapOrder(zikrs(), id, +dir); render(); },
   mvDua(arg) { const [id, dir] = arg.split('|'); const y = window.scrollY; swapOrder(duasList(), id, +dir); render(); window.scrollTo(0, y); },
-  delDua(id) { if (!confirm("Delete this du'a?")) return; const y = window.scrollY; delItem(id); render(); window.scrollTo(0, y); },
+  delDua(id) { deleteWithUndo(id, "Du'a deleted"); render(); },
   saveZikr(id) {
     const data = { title: val('title') || null, text: val('text'), masa: val('masa') || null, count: num('count') || 1 };
     if (!need(data.text, 'Enter the zikr text')) return;
@@ -1013,10 +1153,13 @@ const ACT = {
   saveRelFu(pid) { const text = val('text'), date = val('date'), time = val('time'); if (!need(text, 'Enter what to remember') || !need(date, 'Pick a date')) return; updItem(pid, { followups: [...(item(pid).data.followups || []), { id: uid(), text, date, time, done: false }] }); done(`Follow-up set for ${fmtDate(date)}`); },
   relFuDone(arg) { const [pid, fid] = arg.split('|'); updItem(pid, { followups: item(pid).data.followups.map(f => f.id === fid ? { ...f, done: !f.done } : f) }); render(); },
   relFuDel(arg) { const [pid, fid] = arg.split('|'); updItem(pid, { followups: item(pid).data.followups.filter(f => f.id !== fid) }); render(); },
-  relDelete(id) { if (!confirm('Delete this person and everything saved about her? To keep the history, set the status to Ended instead.')) return; delItem(id); S.view = 'rel'; render(); toast('Deleted'); },
+  relDelete(id) { if (!confirm('Delete this person and everything saved about her? To keep the history, set the status to Ended instead.')) return; S.view = 'rel'; deleteWithUndo(id); render(); },
   async saveRelPin() { const a = val('pin'), b = val('pin2'); if (!/^\d{4,8}$/.test(a)) return toast('Use 4 to 8 digits'); if (a !== b) return toast("PINs don't match"); S.settings.relPin = await pinHash(a); S.relOpen = true; saveSettings(); done('PIN saved'); },
   relPinRemove() { if (!confirm('Remove the PIN?')) return; S.settings.relPin = null; saveSettings(); done('PIN removed'); },
-  delItemAct(id) { if (!confirm('Delete this?')) return; delItem(id); done('Deleted'); },
+  qaWater(a) { const t = today(), prev = day(t).water || 0; setDay(t, x => { x.water = round((x.water || 0) + +a); }); closeSheet(); render(); toast(`Water ${round(prev + +a)} L`, () => { setDay(t, x => { x.water = prev; }); render(); }); },
+  repMode(m) { S.repMode = m; render(); },
+  repMove(n) { const t = parseYmd(today()); let Y = S.repYear || t.getFullYear(), M = S.repMonth ?? t.getMonth(); if ((S.repMode || 'year') === 'month') { M += +n; if (M < 0) { M = 11; Y--; } if (M > 11) { M = 0; Y++; } } else Y += +n; S.repYear = Y; S.repMonth = M; render(); },
+  delItemAct(id) { closeSheet(); deleteWithUndo(id); render(); },
   theme(k) { S.settings.theme = k; saveSettings(); render(); },
   toggleRem(k) { S.settings.reminders[k] = !S.settings.reminders[k]; saveSettings(); render(); },
   hijriAdj(n) { S.settings.hijriAdjust = Math.max(-2, Math.min(2, (S.settings.hijriAdjust || 0) + +n)); saveSettings(); render(); },
@@ -1047,6 +1190,7 @@ const ACT = {
 Object.assign(ACT, SHEETS);
 const ON = {
   relNote(el) { const id = el.dataset.arg; clearTimeout(ON._r); ON._r = setTimeout(() => updItem(id, { notes: el.value }), 700); },
+  search(el) { S.q = el.value; render(); },
   dayNote(el) { const d = el.dataset.arg; clearTimeout(ON._n); ON._n = setTimeout(() => setDay(d, x => { x.note = el.value; }), 700); },
   pageSurah(el) { const p = +el.value; if (p >= 1 && p <= 604) { const s = $('#sheet-root [name=surah]'); if (s) s.value = surahForPage(p); } }
 };
@@ -1060,7 +1204,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => { const el = e.target.closest('[data-on]'); if (el && ON[el.dataset.on]) ON[el.dataset.on](el); });
 
-const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, notifs: vNotifs, rel: vRel, person: vPerson, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
+const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, search: vSearch, reports: vReports, notifs: vNotifs, rel: vRel, person: vPerson, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
 
 /* ================= REMINDERS ================= */
 // Rise works out the reminders for the next 7 days and stores them; a small service on Supabase sends them on time.
@@ -1138,6 +1282,11 @@ function shrinkImage(file) {
     c.getContext('2d').drawImage(im, 0, 0, w, h); res({ src: c.toDataURL('image/jpeg', 0.78), w, h }); }; im.onerror = rej; im.src = r.result; }; r.onerror = rej; r.readAsDataURL(file); });
 }
 
+function prefetchDuas() {
+  if (S._prefetched) return; S._prefetched = true;
+  setTimeout(async () => { for (const d of duasList()) if (d.data.img && d.data.img.startsWith('assets/')) { try { await fetch(imgSrc(d.data.img)); } catch { } } }, 1500);
+}
+
 /* ================= UPDATES ================= */
 async function latestVersion() { try { const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' }); return (await r.json()).version; } catch { return null; } }
 async function updateApp(manual) {
@@ -1189,13 +1338,28 @@ async function startFor(user) {
   const qs = new URLSearchParams(location.search), v = qs.get('v'); if (v && VIEWS[v]) S.view = v; if (qs.get('t')) S.azTab = qs.get('t');
   if (loadCache()) render();
   try { await loadAll(); seedAzkar(); migrateDuaOrder(); } catch (e) { console.warn('load', e); if (!S.items.length && !Object.keys(S.days).length) toast('Could not load your data. Check your connection.'); }
-  S.prayerDate = prayerDay(); render(); flush(); scheduleReminderSync();
+  S.prayerDate = prayerDay(); render(); flush(); scheduleReminderSync(); startRealtime();
 }
 function migrateDuaOrder() {
   if ((S.settings.duaOrderV || 1) >= 2 || !S.settings.azkarSeeded) return;
   const pos = new Map(DUAS.map((d, i) => [d.img, i + 1])); let extra = 1000;
   for (const d of duasList()) updItem(d.id, { order: d.data.img && pos.has(d.data.img) ? pos.get(d.data.img) : extra++ });
   S.settings.duaOrderV = 2; saveSettings();
+}
+let rtTimer = null;
+function startRealtime() {
+  try {
+    const f = `user_id=eq.${S.user.id}`, ch = sb.channel('rise-' + S.user.id);
+    const pend = (t, k) => queue.some(o => o.table === t && (o.key === k || o.match?.id === k));
+    const soon = () => { clearTimeout(rtTimer); rtTimer = setTimeout(() => { saveCache(); if (!$('#sheet-root').innerHTML) render(); }, 300); };
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'days', filter: f }, p => { const r = p.new; if (r?.day && !pend('days', r.day)) { S.days[r.day] = r.data; soon(); } })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: f }, p => {
+        if (p.eventType === 'DELETE') { const id = p.old?.id; if (id && !pend('items', id)) { S.items = S.items.filter(i => i.id !== id); soon(); } return; }
+        const r = p.new; if (!r?.id || pend('items', r.id)) return; const i = S.items.findIndex(x => x.id === r.id);
+        const it = { id: r.id, kind: r.kind, data: r.data, created_at: r.created_at }; if (i >= 0) S.items[i] = it; else S.items.push(it); soon(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: f }, p => { if (p.new?.data && !pend('settings', 'me')) { S.settings = mergeDef(p.new.data); soon(); } })
+      .subscribe();
+  } catch (e) { console.warn('realtime', e); }
 }
 function seedAzkar() {
   if (S.settings.azkarSeeded || items('zikr').length) return;
@@ -1212,8 +1376,13 @@ sb.auth.onAuthStateChange((ev, session) => {
   const { data } = await sb.auth.getSession();
   if (!data.session) renderAuth();
 })();
+let _sw = null;
+document.addEventListener('touchstart', e => { const tg = e.target; if (!S.user || !MAIN.includes(S.view) || $('#sheet-root').innerHTML || document.querySelector('.viewer') || tg.closest('.cds,input,textarea,select,.tabs,.arcwrap,.cal,.viewer,.hm')) { _sw = null; return; } const p = e.touches[0]; _sw = { x: p.clientX, y: p.clientY, t: Date.now() }; }, { passive: true });
+document.addEventListener('touchend', e => { if (!_sw) return; const p = e.changedTouches[0], dx = p.clientX - _sw.x, dy = p.clientY - _sw.y; const s = _sw; _sw = null;
+  if (Date.now() - s.t > 700 || Math.abs(dx) < 80 || Math.abs(dy) > 50 || s.x < 24 || s.x > window.innerWidth - 24) return;
+  const i = MAIN.indexOf(TAB_OF[S.view] || S.view), n = i + (dx < 0 ? 1 : -1); if (n >= 0 && n < MAIN.length) ACT.go(MAIN[n]); }, { passive: true });
 let _lastY = 0;
-window.addEventListener('scroll', () => { const y = window.scrollY, n = document.querySelector('.nav'); if (!n) return; if (y > _lastY + 6 && y > 120) n.classList.add('hide'); else if (y < _lastY - 6 || y < 120) n.classList.remove('hide'); _lastY = y; }, { passive: true });
+window.addEventListener('scroll', () => { const y = window.scrollY; const ns = document.querySelectorAll('.nav,.fab'); if (!ns.length) return; if (y > _lastY + 6 && y > 120) ns.forEach(n => n.classList.add('hide')); else if (y < _lastY - 6 || y < 120) ns.forEach(n => n.classList.remove('hide')); _lastY = y; }, { passive: true });
 window.__rise = { buildReminders: () => buildReminders() };
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { S.relOpen = false; if (S.view === 'person' && S.settings.relPin) { S.view = 'rel'; render(); } else if (S.view === 'rel') render(); } if (document.visibilityState === 'visible') { checkForUpdate(); if (S.user) { render(); flush(); scheduleReminderSync(); } } });
 setTimeout(checkForUpdate, 3000);

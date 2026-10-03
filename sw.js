@@ -1,20 +1,24 @@
 // Rise service worker: works offline and shows push notifications
-const CACHE = 'rise-v13';
-const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'praycalc.js', 'azkar-data.js', 'manifest.webmanifest',
-  'assets/icon-192.png', 'assets/dragon-icon.png', 'assets/header-day.jpg', 'assets/header-night.jpg',
-  'assets/prayer-day.jpg', 'assets/prayer-night.jpg', 'assets/prayer-screen.jpg', 'assets/score.jpg',
-  'assets/cd-green.jpg', 'assets/cd-sand.jpg', 'assets/cd-blue.jpg'];
+const CACHE = 'rise-v14';
+const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'praycalc.js', 'morphdom.js', 'azkar-data.js', 'manifest.webmanifest',
+  'assets/icon-192.png', 'assets/dragon-icon.png', 'assets/header-day.webp', 'assets/header-night.webp',
+  'assets/prayer-day.webp', 'assets/prayer-night.webp', 'assets/prayer-screen.webp', 'assets/score.webp',
+  'assets/cd-green.webp', 'assets/cd-sand.webp', 'assets/cd-blue.webp'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== CACHE + '-ext').map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (e.request.method !== 'GET') return;
+  if (url.origin !== location.origin) {
+    if (/cdn\.jsdelivr\.net|fonts\.(googleapis|gstatic)\.com/.test(url.host)) e.respondWith(caches.open(CACHE + '-ext').then(c => c.match(e.request).then(hit => { const net = fetch(e.request).then(r => { if (r.ok || r.type === 'opaque') c.put(e.request, r.clone()); return r; }).catch(() => hit); return hit || net; })));
+    return;
+  }
   const isAsset = url.pathname.includes('/assets/');
   if (isAsset) {
     e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => {
