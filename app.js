@@ -8,7 +8,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '12';
+const APP_VERSION = '13';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -643,24 +643,30 @@ function vPerson() {
   <button class="btn danger full mt2" data-act="relDelete" data-arg="${p.id}">Delete ${esc(d.name)}</button></div></div>`;
 }
 /* ---------- Notifications ---------- */
-function hasDueToday() {
-  const t = today();
-  if (items('reminder').some(m => !m.data.done && m.data.date === t)) return true;
-  if (items('assignment').some(a => !a.data.submitted && a.data.due === t)) return true;
-  if (items('exam').some(e => e.data.date === t)) return true;
-  if (relPeople().some(p => (p.data.followups || []).some(f => !f.done && f.date <= t))) return true;
-  return false;
+function importantSoon(days = 7) {
+  const t = today(), L = [], nt = S.settings.reminders.relNeutral && S.settings.relPin;
+  const inWin = d => { const n = diffDays(t, d); return n >= 0 && n <= days; };
+  for (const e of items('exam')) if (inWin(e.data.date)) L.push({ date: e.data.date, time: e.data.time, icon: 'cap', title: `${e.data.subject} ${e.data.type}`, sub: e.data.chapters || 'Exam', go: 'study' });
+  for (const a of items('assignment')) if (!a.data.submitted && inWin(a.data.due)) L.push({ date: a.data.due, time: a.data.time, icon: 'doc', title: a.data.title, sub: 'Assignment due' + (a.data.subject ? ' · ' + a.data.subject : ''), go: 'study' });
+  for (const m of items('reminder')) if (!m.data.done && inWin(m.data.date)) L.push({ date: m.data.date, time: m.data.time, icon: 'bell', title: m.data.title, sub: m.data.note || 'Reminder', go: 'reminders' });
+  for (const p of relPeople()) { if (p.data.status === 'Ended') continue;
+    for (const f of p.data.followups || []) if (!f.done && diffDays(t, f.date) <= days) L.push({ date: f.date < t ? t : f.date, time: f.time, icon: 'heart', title: nt ? 'Follow-up' : f.text, sub: nt ? 'Relationships' : p.data.name + (f.date < t ? ' · overdue' : ''), go: 'rel' });
+    if (p.data.bday?.d) { const b = nextYearly(p.data.bday.m, p.data.bday.d); if (inWin(b)) L.push({ date: b, icon: 'gift', title: nt ? 'Birthday' : `${p.data.name}'s birthday`, sub: 'Relationships', go: 'rel' }); } }
+  for (const e of items('event')) { const b = nextYearly(e.data.month, e.data.day); if (inWin(b)) L.push({ date: b, icon: 'gift', title: e.data.title, sub: 'Important date', go: 'dates' }); }
+  const z = zakatDates(); if (z?.first && inWin(z.first)) L.push({ date: z.first, icon: 'crescent', title: 'Zakat date', sub: `${z.z.data.hd} ${HM[z.z.data.hm - 1]}`, go: 'zakat' });
+  return L.sort((a, b) => (a.date + (a.time || '')) < (b.date + (b.time || '')) ? -1 : 1);
 }
+function hasDueToday() { const t = today(); return importantSoon(0).some(x => x.date === t); }
 function vNotifs() {
-  const list = buildReminders().sort((a, b) => a.at < b.at ? -1 : 1), now = new Date(), t = today();
-  const groups = {}; for (const x of list) { const d = new Date(x.at); const k = ymd(d); (groups[k] = groups[k] || []).push(x); }
-  const keys = Object.keys(groups).sort().slice(0, 4);
-  const lbl = k => { const n = diffDays(ymd(now), k); return n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : fmtDate(k); };
-  const perm = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+  const now = new Date(), start = new Date(now); start.setHours(0, 0, 0, 0);
+  const got = buildReminders(start).filter(x => new Date(x.at) <= now && !/^(pr|gym|gym2)-/.test(x.tag)).sort((a, b) => a.at < b.at ? 1 : -1);
+  const soon = importantSoon(7), t = today();
+  const lbl = d => { const n = diffDays(t, d); return n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : 'In ' + n + ' days'; };
+  const hhmm = iso => { const d = new Date(iso); return fmt12(pad(d.getHours()) + ':' + pad(d.getMinutes())); };
   return `<div class="page">${pageTop('Notifications', 'today')}<div class="wrap">
-  ${perm !== 'granted' ? '<div class="list" style="padding:14px"><p class="small">Notifications are off on this phone. Turn them on in More → Settings.</p></div>' : ''}
-  ${keys.length ? keys.map(k => `<div class="h2">${lbl(k)}</div><div class="list">${groups[k].map(x => { const d = new Date(x.at); return `<div class="row"><span style="width:62px;font-weight:600;color:var(--gold);font-size:13px">${fmt12(pad(d.getHours()) + ':' + pad(d.getMinutes()))}</span><span class="t"><b>${esc(x.title)}</b><span>${esc(x.body || '')}</span></span></div>`; }).join('')}</div>`).join('') : '<div class="list"><div class="empty">Nothing coming up</div></div>'}
-  <p class="small muted center mt2">Choose which notifications you get in More → Settings.</p></div></div>`;
+  <div class="h2">Coming up · next 7 days</div><div class="list">${soon.length ? soon.map(x => `<button class="row" data-act="go" data-arg="${x.go}">${icon(x.icon, 'c1')}<span class="t"><b>${esc(x.title)}</b><span>${esc(x.sub)}</span></span><span class="tag ${diffDays(t, x.date) <= 1 ? 'red' : ''}">${lbl(x.date)}${x.time ? ' · ' + fmt12(x.time) : ''}</span></button>`).join('') : '<div class="empty">No exams, deadlines or reminders in the next 7 days</div>'}</div>
+  <div class="h2">Received today</div><div class="list">${got.length ? got.map(x => `<div class="row"><span style="width:62px;font-weight:600;color:var(--gold);font-size:13px">${hhmm(x.at)}</span><span class="t"><b>${esc(x.title)}</b><span>${esc(x.body || '')}</span></span></div>`).join('') : '<div class="empty">Nothing yet today</div>'}</div>
+  <p class="small muted center mt2">Prayer and gym notifications aren't listed here.</p></div></div>`;
 }
 function vTasks() {
   return `<div class="page">${pageTop('My tasks', 'more')}<div class="wrap"><p class="muted small" style="margin:0 6px">Prayers, gym, Quran, languages, cardio, sleep and water are always on your checklist. Add your own tasks here.</p>
@@ -1058,8 +1064,8 @@ const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, 
 
 /* ================= REMINDERS ================= */
 // Rise works out the reminders for the next 7 days and stores them; a small service on Supabase sends them on time.
-function buildReminders() {
-  const st = S.settings, r = st.reminders, now = new Date(), t = today(), out = [];
+function buildReminders(since) {
+  const st = S.settings, r = st.reminders, now = since || new Date(), t = since ? ymd(since) : today(), out = [];
   const push = (when, title, body, tag, url = './') => { if (when > now) out.push({ at: when.toISOString(), title, body, tag, url }); };
   if (r.azkar) for (let i = 0; i < 7; i++) { const d = addDays(t, i), ad = day(d).azkar || {}; if (!ad.sabahDone) push(new Date(adhan(d, 'fajr').getTime() + 30 * 60e3), 'Morning azkar', 'أذكار الصباح · tap to start', `az-s-${d}`, './?v=azkar&t=sabah'); if (!ad.masaDone) push(new Date(adhan(d, 'maghrib').getTime() + 15 * 60e3), 'Evening azkar', 'أذكار المساء · tap to start', `az-m-${d}`, './?v=azkar&t=masa'); }
   if (r.rel) for (const p of relPeople()) for (const f of (p.data.followups || [])) if (!f.done && diffDays(t, f.date) >= 0 && diffDays(t, f.date) <= 60) push(at(f.date, f.time || '10:00'), r.relNeutral ? 'Reminder' : `${p.data.name}: follow up`, r.relNeutral ? 'Open Rise for details' : f.text, `rf-${p.id}-${f.id}`, './?v=rel');
