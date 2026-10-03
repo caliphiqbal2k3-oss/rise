@@ -7,6 +7,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
+const APP_VERSION = '5';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -581,6 +582,8 @@ function vSettings() {
    ${perm === 'granted' ? '<p class="small"><b>Notifications are on</b> for this phone.</p>' : perm === 'unsupported' ? '<p class="small">To get notifications on iPhone, open Rise from your Home Screen (Share → Add to Home Screen), then come back here.</p>' : '<button class="btn full" data-act="enablePush">Turn on notifications</button>'}
    ${perm === 'granted' ? '<button class="link mt" data-act="testPush">Send a test notification</button>' : ''}
    <div class="mt">${remRows.map(([k, l]) => `<div class="row"><span class="t"><b style="font-weight:400">${l}</b></span><button class="toggle ${r[k] ? 'on' : ''}" data-act="toggleRem" data-arg="${k}" aria-label="${l}"></button></div>`).join('')}</div></div>
+  <div class="h2">App</div><div class="list">
+   <button class="row" data-act="updateApp"><span class="t"><b>Check for updates</b><span>Version ${APP_VERSION} · get the newest version of Rise</span></span>${I.chev}</button></div>
   <div class="h2">Your data</div><div class="list">
    <button class="row" data-act="backup"><span class="t"><b>Backup</b><span>Save all your data to a file</span></span>${I.chev}</button>
    <button class="row" data-act="signOut"><span class="t"><b style="color:var(--danger)">Sign out</b><span>${esc(S.user.email)}</span></span></button></div>
@@ -833,6 +836,7 @@ const ACT = {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `rise-backup-${today()}.json`; document.body.appendChild(a); a.click(); a.remove();
   },
   async signOut() { if (!confirm('Sign out of Rise on this phone?')) return; try { localStorage.removeItem(cacheKey()); localStorage.removeItem(queueKey()); } catch { } await sb.auth.signOut(); location.reload(); },
+  updateApp() { updateApp(true); },
   enablePush, testPush,
   authMode(m) { authMode = m; renderAuth(); },
   doAuth
@@ -908,6 +912,25 @@ async function testPush() {
   toast(error ? 'The reminder service is not set up yet' : 'Test sent · it arrives within a minute');
 }
 
+/* ================= UPDATES ================= */
+async function latestVersion() { try { const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' }); return (await r.json()).version; } catch { return null; } }
+async function updateApp(manual) {
+  if (manual) toast('Checking for updates…');
+  const v = await latestVersion();
+  if (manual && v && v === APP_VERSION) return toast('You have the newest version');
+  if (!v && manual) return toast('Could not check. Are you online?');
+  try { const regs = await navigator.serviceWorker?.getRegistrations?.() || []; for (const r of regs) await r.update().catch(() => { }); } catch { }
+  try { for (const k of await caches.keys()) await caches.delete(k); } catch { }
+  location.reload();
+}
+async function checkForUpdate() {
+  const v = await latestVersion();
+  if (v && v !== APP_VERSION && !$('#upd')) {
+    const b = document.createElement('button'); b.id = 'upd'; b.className = 'updbar'; b.textContent = 'A new version of Rise is ready · tap to update';
+    b.onclick = () => updateApp(false); document.body.appendChild(b);
+  }
+}
+
 /* ================= SIGN IN ================= */
 let authMode = 'in';
 function renderAuth(msg = '', err = '') {
@@ -952,5 +975,6 @@ sb.auth.onAuthStateChange((ev, session) => {
   if (!data.session) renderAuth();
 })();
 window.__rise = { buildReminders: () => buildReminders() };
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.user) { render(); flush(); scheduleReminderSync(); } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { checkForUpdate(); if (S.user) { render(); flush(); scheduleReminderSync(); } } });
+setTimeout(checkForUpdate, 3000);
 setInterval(() => { if (S.user && !$('#sheet-root').innerHTML && document.activeElement?.tagName !== 'TEXTAREA' && document.activeElement?.tagName !== 'INPUT') { const night = document.body.classList.contains('night'); applyTheme(); if (night !== document.body.classList.contains('night')) render(); } }, 60000);
