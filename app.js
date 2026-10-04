@@ -9,7 +9,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '16';
+const APP_VERSION = '17';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -249,7 +249,26 @@ const quranMinutes = date => quranToday(date).reduce((a, q) => a + (+q.data.minu
 const quranDone = date => { const l = quranToday(date); return l.length > 0 && (quranMinutes(date) >= S.settings.quranGoal || l.some(q => !q.data.minutes)); };
 const isGymDay = date => S.settings.gymDays.includes(parseYmd(date).getDay());
 function tasksFor(date) { const wd = parseYmd(date).getDay(); return items('task').filter(t => t.data.repeat === 'daily' || (t.data.repeat === 'weekdays' && (t.data.weekdays || []).includes(wd)) || (t.data.repeat === 'once' && t.data.date === date)); }
-function sessionsFor(date) { const wd = parseYmd(date).getDay(); return items('session').filter(s => (s.data.weekdays || []).includes(wd) && !(s.data.skip || []).includes(date)).sort((a, b) => toMin(a.data.start) - toMin(b.data.start)); }
+function sessionsFor(date) { const wd = parseYmd(date).getDay(); return items('session').filter(s => ((s.data.weekdays || []).includes(wd) || (s.data.dates || []).includes(date)) && !(s.data.skip || []).includes(date)).sort((a, b) => toMin(a.data.start) - toMin(b.data.start)); }
+const sesMode = s => s.data.mode || ((s.data.dates || []).length && !(s.data.weekdays || []).length ? 'dates' : 'week');
+function datesText(ds, from) {
+  const L = [...ds].filter(d => !from || d >= from).sort(), g = [];
+  for (const d of L) { const dt = parseYmd(d), k = MON[dt.getMonth()]; if (g.length && g[g.length - 1][0] === k) g[g.length - 1][1].push(dt.getDate()); else g.push([k, [dt.getDate()]]); }
+  return g.map(([m, n]) => n.join(', ') + ' ' + m).join(' · ');
+}
+const sesRepeat = (s, from) => sesMode(s) === 'dates' ? (datesText(s.data.dates || [], from) ? 'on ' + datesText(s.data.dates || [], from) : 'no dates left') : 'every ' + (s.data.weekdays || []).map(w => DOW[w]).join(', ');
+function calPicker(name, sel, nMonths = 4) {
+  const t = calToday(), td = parseYmd(t), examDays = new Set(items('exam').map(e => e.data.date));
+  let out = '';
+  for (let i = 0; i < nMonths; i++) {
+    const first = new Date(td.getFullYear(), td.getMonth() + i, 1), last = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    let cells = DOW.map(d => `<span class="calh">${d[0]}</span>`).join('') + '<span></span>'.repeat(first.getDay());
+    for (let d = 1; d <= last; d++) { const v = ymd(new Date(first.getFullYear(), first.getMonth(), d)), past = v < t;
+      cells += `<button type="button" class="pick calday ${sel.includes(v) ? 'on' : ''} ${examDays.has(v) ? 'exam' : ''}" data-pick="${name}" data-multi="1" data-v="${v}" ${past ? 'disabled' : ''}>${d}</button>`; }
+    out += `<div class="calmo" data-m="${i}" ${i ? 'hidden' : ''}><div class="calhd"><button type="button" class="calnav" data-cal="-1" ${i ? '' : 'disabled'} aria-label="Previous month">‹</button><b>${MONL[first.getMonth()]} ${first.getFullYear()}</b><button type="button" class="calnav" data-cal="1" ${i < nMonths - 1 ? '' : 'disabled'} aria-label="Next month">›</button></div><div class="calgrid">${cells}</div></div>`;
+  }
+  return `<div class="cal">${out}<p class="small muted" style="margin:6px 2px 0">Tap every date you will study this subject. Dates with a dot have an exam.</p></div>`;
+}
 function checklist(date) {
   const d = day(date), L = [];
   const pdte = date === today() ? prayerDay() : date, pc = prayedCount(pdte);
@@ -444,7 +463,7 @@ function vStudy() {
   const t = today();
   const exams = items('exam').sort((a, b) => a.data.date < b.data.date ? -1 : 1), up = exams.filter(e => e.data.date >= t), past = exams.filter(e => e.data.date < t);
   const asg = items('assignment').sort((a, b) => a.data.due < b.data.due ? -1 : 1), aOpen = asg.filter(a => !a.data.submitted && a.data.due >= t), aOther = asg.filter(a => a.data.submitted || a.data.due < t);
-  const ses = items('session');
+  const ses = items('session'), lastDate = ses.flatMap(x => x.data.dates || []).filter(d => d >= t).sort().pop(), schedN = Math.min(60, Math.max(7, lastDate ? diffDays(t, lastDate) + 1 : 7));
   const tagFor = n => n <= 3 ? 'red' : n <= 7 ? '' : 'green';
   return `<div class="page">${pageTop('Study')}<div class="wrap">
   <div class="h2">Exams</div><div class="list">${up.length ? up.map(e => { const n = diffDays(t, e.data.date); return `<button class="row" data-act="sheetExam" data-arg="${e.id}">${icon('cap', 'c5')}<span class="t"><b>${esc(e.data.subject)} · ${esc(e.data.type)}</b><span>${fmtDate(e.data.date)}${e.data.time ? ' · ' + fmt12(e.data.time) : ''}${e.data.chapters ? ' · ' + esc(e.data.chapters) : ''}</span></span><span class="tag ${tagFor(n)}">${countdownText(n)}</span></button>`; }).join('') : '<div class="empty">No upcoming exams</div>'}</div>
@@ -455,7 +474,7 @@ function vStudy() {
   ${aOther.length ? `<button class="link mt" style="margin-left:6px" data-act="togglePast" data-arg="asg">${S.showPast.asg ? 'Hide' : 'Show'} submitted and past (${aOther.length})</button>${S.showPast.asg ? `<div class="list">${aOther.reverse().map(a => `<div class="row"><button class="ck ${a.data.submitted ? 'on' : ''}" data-act="submitAsg" data-arg="${a.id}">${I.check}</button><button class="t" style="text-align:left" data-act="sheetAsg" data-arg="${a.id}"><b>${esc(a.data.title)}</b><span>${a.data.submitted ? 'Submitted' : 'Not submitted'} · ${fmtDateY(a.data.due)}</span></button></div>`).join('')}</div>` : ''}` : ''}
   <button class="btn sec2 add" data-act="sheetAsg">${I.plus.replace('<svg', '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"')} Add assignment</button>
 
-  <div class="h2">Study schedule · next 7 days</div><div class="list">${[0, 1, 2, 3, 4, 5, 6].map(k => { const d = addDays(t, k), dt = parseYmd(d), L = sessionsFor(d); return L.length ? `<div class="row" style="align-items:flex-start"><span style="width:62px;padding-top:2px"><b style="color:var(--gold)">${k === 0 ? 'Today' : k === 1 ? 'Tmrw' : DOW[dt.getDay()]}</b><span class="small muted" style="display:block">${dt.getDate()} ${MON[dt.getMonth()]}</span></span><div class="t" style="flex:1;min-width:0">${L.map(s => { const dn = !!(day(d).sessions || {})[s.id]; return `<div style="display:flex;align-items:center;padding:3px 0;gap:10px"><button class="t" style="text-align:left" data-act="sheetSession" data-arg="${s.id}"><b style="${dn ? 'text-decoration:line-through;opacity:.6' : ''}">${esc(s.data.subject)}</b><span>${fmt12(s.data.start)}${s.data.end ? '–' + fmt12(s.data.end) : ''} · every ${(s.data.weekdays || []).map(w => DOW[w]).join(', ')}</span></button><button class="ses-del" data-act="askDelSession" data-arg="${s.id}|${d}" aria-label="Delete">${I.trash}</button></div>`; }).join('')}</div></div>` : ''; }).join('') || '<div class="empty">Plan which subject to study on which days</div>'}</div>
+  <div class="h2">Study schedule${schedN > 7 ? '' : ' · next 7 days'}</div><div class="list">${[...Array(schedN).keys()].map(k => { const d = addDays(t, k), dt = parseYmd(d), L = sessionsFor(d); return L.length ? `<div class="row" style="align-items:flex-start"><span style="width:62px;padding-top:2px"><b style="color:var(--gold)">${k === 0 ? 'Today' : k === 1 ? 'Tmrw' : DOW[dt.getDay()]}</b><span class="small muted" style="display:block">${dt.getDate()} ${MON[dt.getMonth()]}</span></span><div class="t" style="flex:1;min-width:0">${L.map(s => { const dn = !!(day(d).sessions || {})[s.id]; return `<div style="display:flex;align-items:center;padding:3px 0;gap:10px"><button class="t" style="text-align:left" data-act="sheetSession" data-arg="${s.id}"><b style="${dn ? 'text-decoration:line-through;opacity:.6' : ''}">${esc(s.data.subject)}</b><span>${fmt12(s.data.start)}${s.data.end ? '–' + fmt12(s.data.end) : ''} · ${sesRepeat(s, t)}</span></button><button class="ses-del" data-act="askDelSession" data-arg="${s.id}|${d}" aria-label="Delete">${I.trash}</button></div>`; }).join('')}</div></div>` : ''; }).join('') || '<div class="empty">Plan which subject to study on which days</div>'}</div>
   <button class="btn sec2 add" data-act="sheetSession">${I.plus.replace('<svg', '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"')} Add study session</button>
 
   <div class="h2">Languages</div><div class="list">${items('language').length ? items('language').map(l => { const wk = [0, 1, 2, 3, 4, 5, 6].reduce((a, i) => a + langMinutes(l.id, addDays(t, -i)), 0); return `<button class="row" data-act="sheetLangLog" data-arg="${l.id}">${l.data.icon === 'dragon' ? '<span class="dr"></span>' : icon('lang', 'c5')}<span class="t"><b>${esc(l.data.name)}${l.data.active === false ? ' · paused' : ''}</b><span>${l.data.minutes} min a day · reminder ${fmt12(l.data.time)} · ${wk} min this week</span></span><span class="tag">${langStreak(l)}-day streak</span></button>`; }).join('') : '<div class="empty">No languages yet</div>'}</div>
@@ -966,7 +985,7 @@ const SHEETS = {
   },
   sheetSession(id) {
     const s = id ? item(id) : null;
-    openSheet(`<h2>${s ? 'Edit study session' : 'Add study session'}</h2>${fld('Subject', inp('subject', s?.data.subject || ''))}${fld('Days', picks('weekdays', weekdayOpts, (s?.data.weekdays || []).map(String)))}
+    openSheet(`<h2>${s ? 'Edit study session' : 'Add study session'}</h2>${fld('Subject', inp('subject', s?.data.subject || ''))}<div id="sesmode" data-mode="${s ? sesMode(s) : 'week'}">${fld('Repeat', picks('srep', [['week', 'Every week'], ['dates', 'Specific dates']], [s ? sesMode(s) : 'week'], false))}<div class="only-week">${fld('Days', picks('weekdays', weekdayOpts, (s?.data.weekdays || []).map(String)))}</div><div class="only-dates">${fld('Dates', calPicker('sdates', s?.data.dates || []))}</div></div>
     <div class="two">${fld('Start', inp('start', s?.data.start || '20:00', 'time'))}${fld('End', inp('end', s?.data.end || '', 'time'))}</div>${saveBtns('saveSession', id || '', id ? 'delItemAct' : '')}`);
   },
   sheetGymTimes() {
@@ -1101,7 +1120,9 @@ const ACT = {
   saveExam(id) { const data = { subject: val('subject'), type: picked('type')[0] || 'Quiz', date: val('date'), time: val('time'), chapters: val('chapters') }; if (!need(data.subject, 'Enter the subject') || !need(data.date, 'Pick the date')) return; id ? updItem(id, data) : addItem('exam', data); done('Exam saved'); },
   saveAsg(id) { const data = { title: val('title'), subject: val('subject'), due: val('due'), time: val('time') }; if (!need(data.title, 'Enter the title') || !need(data.due, 'Pick the deadline')) return; id ? updItem(id, data) : addItem('assignment', { ...data, submitted: false }); done('Assignment saved'); },
   submitAsg(id) { const a = item(id); updItem(id, { submitted: !a.data.submitted }); render(); toast(a.data.submitted ? 'Marked as submitted' : 'Marked as not submitted'); },
-  saveSession(id) { const data = { subject: val('subject'), weekdays: picked('weekdays').map(Number), start: val('start'), end: val('end') }; if (!need(data.subject, 'Enter the subject') || !data.weekdays.length) return toast('Choose at least one day'); id ? updItem(id, data) : addItem('session', data); done('Saved'); },
+  saveSession(id) { const mode = picked('srep')[0] || 'week', t = calToday(), keepPast = id ? (item(id).data.dates || []).filter(d => d < t) : [];
+    const data = { subject: val('subject'), mode, weekdays: mode === 'week' ? picked('weekdays').map(Number) : [], dates: mode === 'dates' ? [...new Set([...keepPast, ...picked('sdates')])].sort() : [], start: val('start'), end: val('end') };
+    if (!need(data.subject, 'Enter the subject')) return; if (mode === 'week' && !data.weekdays.length) return toast('Choose at least one day'); if (mode === 'dates' && !picked('sdates').length) return toast('Choose at least one date'); id ? updItem(id, data) : addItem('session', data); done('Saved'); },
   togglePast(k) { S.showPast[k] = !S.showPast[k]; render(); },
   saveGymTimes() { const st = S.settings; st.gymDays = picked('gdays').map(Number).sort(); for (let i = 0; i < 7; i++) st.gymTimes[i] = val('gt' + i) || st.gymTimes[i] || '18:30'; st.gymNudge = num('nudge') ?? 30; saveSettings(); done('Gym times saved'); },
   saveBody(id) { const data = { date: val('date') || today(), weight: num('weight'), navel: num('navel'), belly: num('belly') }; if (data.weight == null && data.navel == null && data.belly == null) return toast('Enter at least one measurement'); id ? updItem(id, data) : addItem('body', data); done('Measurement saved'); },
@@ -1178,9 +1199,11 @@ const ACT = {
   qaWater(a) { const t = today(), prev = day(t).water || 0; setDay(t, x => { x.water = round((x.water || 0) + +a); }); closeSheet(); render(); toast(`Water ${round(prev + +a)} L`, () => { setDay(t, x => { x.water = prev; }); render(); }); },
   repMode(m) { S.repMode = m; render(); },
   repMove(n) { const t = parseYmd(today()); let Y = S.repYear || t.getFullYear(), M = S.repMonth ?? t.getMonth(); if ((S.repMode || 'year') === 'month') { M += +n; if (M < 0) { M = 11; Y--; } if (M > 11) { M = 0; Y++; } } else Y += +n; S.repYear = Y; S.repMonth = M; render(); },
-  askDelSession(arg) { const [id, d] = arg.split('|'), s = item(id); openSheet(`<h2>Delete ${esc(s.data.subject)}?</h2><p class="small muted">This session repeats every ${(s.data.weekdays || []).map(w => DOWL[w]).join(', ')}.</p>
-    <button class="btn sec2 full mt" data-act="skipSession" data-arg="${id}|${d}">Only ${fmtDate(d)}</button><button class="btn danger full mt" data-act="delSession" data-arg="${id}">Every week (delete the whole session)</button>`); },
-  skipSession(arg) { const [id, d] = arg.split('|'), prev = item(id).data.skip || []; updItem(id, { skip: [...prev, d] }); closeSheet(); render(); toast(`Removed for ${fmtDate(d)}`, () => { updItem(id, { skip: prev }); render(); }); },
+  askDelSession(arg) { const [id, d] = arg.split('|'), s = item(id), dm = sesMode(s) === 'dates'; openSheet(`<h2>Delete ${esc(s.data.subject)}?</h2><p class="small muted">${dm ? 'This subject is planned ' + sesRepeat(s, today()) + '.' : 'This session repeats every ' + (s.data.weekdays || []).map(w => DOWL[w]).join(', ') + '.'}</p>
+    <button class="btn sec2 full mt" data-act="skipSession" data-arg="${id}|${d}">Only ${fmtDate(d)}</button><button class="btn danger full mt" data-act="delSession" data-arg="${id}">${dm ? 'All dates (delete the whole session)' : 'Every week (delete the whole session)'}</button>`); },
+  skipSession(arg) { const [id, d] = arg.split('|'), x = item(id);
+    if (sesMode(x) === 'dates') { const prev = x.data.dates || [], left = prev.filter(v => v !== d); closeSheet(); if (!left.length) { deleteWithUndo(id, 'Study session deleted'); render(); return; } updItem(id, { dates: left }); render(); toast(`Removed ${fmtDate(d)}`, () => { updItem(id, { dates: prev }); render(); }); return; }
+    const prev = x.data.skip || []; updItem(id, { skip: [...prev, d] }); closeSheet(); render(); toast(`Removed for ${fmtDate(d)}`, () => { updItem(id, { skip: prev }); render(); }); },
   delSession(id) { closeSheet(); deleteWithUndo(id, 'Study session deleted'); render(); },
   delItemAct(id) { closeSheet(); deleteWithUndo(id); render(); },
   theme(k) { S.settings.theme = k; saveSettings(); render(); },
@@ -1219,6 +1242,9 @@ const ON = {
 };
 document.addEventListener('click', e => {
   const pk = e.target.closest('[data-pick]');
+  const cn = e.target.closest('[data-cal]');
+  if (cn) { const mo = cn.closest('.calmo'), nx = mo.parentElement.querySelector(`.calmo[data-m="${+mo.dataset.m + +cn.dataset.cal}"]`); if (nx) { mo.hidden = true; nx.hidden = false; } return; }
+  if (pk && pk.dataset.pick === 'srep') { const m = $('#sesmode'); if (m) m.dataset.mode = pk.dataset.v; }
   if (pk) { if (pk.dataset.multi === '0') $$(`[data-pick="${pk.dataset.pick}"]`, pk.parentElement).forEach(b => b.classList.toggle('on', b === pk)); else pk.classList.toggle('on'); return; }
   const el = e.target.closest('[data-act]'); if (!el) return;
   const f = ACT[el.dataset.act]; if (!f) return;
