@@ -9,7 +9,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '15';
+const APP_VERSION = '16';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -84,6 +84,7 @@ const I = {
   isha: P('M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5zM17 4l.6 1.4L19 6l-1.4.6L17 8l-.6-1.4L15 6l1.4-.6z'),
   beads: P('M12 3a2 2 0 1 0 0 .01M7 5.5a2 2 0 1 0 0 .01M17 5.5a2 2 0 1 0 0 .01M4.5 10a2 2 0 1 0 0 .01M19.5 10a2 2 0 1 0 0 .01M6 15a2 2 0 1 0 0 .01M18 15a2 2 0 1 0 0 .01M12 14v4M10 20h4l-2 2z'),
   search: P('M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.5-4.5'),
+  trash: P('M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'),
   heart: P('M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z'),
   lock: P('M6 11h12v10H6zM8 11V8a4 4 0 0 1 8 0v3'),
   pin: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#8A6A2E"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>'
@@ -248,7 +249,7 @@ const quranMinutes = date => quranToday(date).reduce((a, q) => a + (+q.data.minu
 const quranDone = date => { const l = quranToday(date); return l.length > 0 && (quranMinutes(date) >= S.settings.quranGoal || l.some(q => !q.data.minutes)); };
 const isGymDay = date => S.settings.gymDays.includes(parseYmd(date).getDay());
 function tasksFor(date) { const wd = parseYmd(date).getDay(); return items('task').filter(t => t.data.repeat === 'daily' || (t.data.repeat === 'weekdays' && (t.data.weekdays || []).includes(wd)) || (t.data.repeat === 'once' && t.data.date === date)); }
-function sessionsFor(date) { const wd = parseYmd(date).getDay(); return items('session').filter(s => (s.data.weekdays || []).includes(wd)).sort((a, b) => toMin(a.data.start) - toMin(b.data.start)); }
+function sessionsFor(date) { const wd = parseYmd(date).getDay(); return items('session').filter(s => (s.data.weekdays || []).includes(wd) && !(s.data.skip || []).includes(date)).sort((a, b) => toMin(a.data.start) - toMin(b.data.start)); }
 function checklist(date) {
   const d = day(date), L = [];
   const pdte = date === today() ? prayerDay() : date, pc = prayedCount(pdte);
@@ -454,7 +455,7 @@ function vStudy() {
   ${aOther.length ? `<button class="link mt" style="margin-left:6px" data-act="togglePast" data-arg="asg">${S.showPast.asg ? 'Hide' : 'Show'} submitted and past (${aOther.length})</button>${S.showPast.asg ? `<div class="list">${aOther.reverse().map(a => `<div class="row"><button class="ck ${a.data.submitted ? 'on' : ''}" data-act="submitAsg" data-arg="${a.id}">${I.check}</button><button class="t" style="text-align:left" data-act="sheetAsg" data-arg="${a.id}"><b>${esc(a.data.title)}</b><span>${a.data.submitted ? 'Submitted' : 'Not submitted'} · ${fmtDateY(a.data.due)}</span></button></div>`).join('')}</div>` : ''}` : ''}
   <button class="btn sec2 add" data-act="sheetAsg">${I.plus.replace('<svg', '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"')} Add assignment</button>
 
-  <div class="h2">Study schedule</div><div class="list">${[0, 1, 2, 3, 4, 5, 6].map(w => { const L = ses.filter(s => (s.data.weekdays || []).includes(w)).sort((a, b) => toMin(a.data.start) - toMin(b.data.start)); return L.length ? `<div class="row" style="align-items:flex-start"><span style="width:44px;font-weight:600;color:var(--gold);padding-top:2px">${DOW[w]}</span><span class="t">${L.map(s => `<button style="display:block;text-align:left;padding:2px 0" data-act="sheetSession" data-arg="${s.id}"><b>${esc(s.data.subject)}</b><span>${fmt12(s.data.start)}${s.data.end ? '–' + fmt12(s.data.end) : ''}</span></button>`).join('')}</span></div>` : ''; }).join('') || '<div class="empty">Plan which subject to study on which days</div>'}</div>
+  <div class="h2">Study schedule · next 7 days</div><div class="list">${[0, 1, 2, 3, 4, 5, 6].map(k => { const d = addDays(t, k), dt = parseYmd(d), L = sessionsFor(d); return L.length ? `<div class="row" style="align-items:flex-start"><span style="width:62px;padding-top:2px"><b style="color:var(--gold)">${k === 0 ? 'Today' : k === 1 ? 'Tmrw' : DOW[dt.getDay()]}</b><span class="small muted" style="display:block">${dt.getDate()} ${MON[dt.getMonth()]}</span></span><div class="t" style="flex:1;min-width:0">${L.map(s => { const dn = !!(day(d).sessions || {})[s.id]; return `<div style="display:flex;align-items:center;padding:3px 0;gap:10px"><button class="t" style="text-align:left" data-act="sheetSession" data-arg="${s.id}"><b style="${dn ? 'text-decoration:line-through;opacity:.6' : ''}">${esc(s.data.subject)}</b><span>${fmt12(s.data.start)}${s.data.end ? '–' + fmt12(s.data.end) : ''} · every ${(s.data.weekdays || []).map(w => DOW[w]).join(', ')}</span></button><button class="ses-del" data-act="askDelSession" data-arg="${s.id}|${d}" aria-label="Delete">${I.trash}</button></div>`; }).join('')}</div></div>` : ''; }).join('') || '<div class="empty">Plan which subject to study on which days</div>'}</div>
   <button class="btn sec2 add" data-act="sheetSession">${I.plus.replace('<svg', '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"')} Add study session</button>
 
   <div class="h2">Languages</div><div class="list">${items('language').length ? items('language').map(l => { const wk = [0, 1, 2, 3, 4, 5, 6].reduce((a, i) => a + langMinutes(l.id, addDays(t, -i)), 0); return `<button class="row" data-act="sheetLangLog" data-arg="${l.id}">${l.data.icon === 'dragon' ? '<span class="dr"></span>' : icon('lang', 'c5')}<span class="t"><b>${esc(l.data.name)}${l.data.active === false ? ' · paused' : ''}</b><span>${l.data.minutes} min a day · reminder ${fmt12(l.data.time)} · ${wk} min this week</span></span><span class="tag">${langStreak(l)}-day streak</span></button>`; }).join('') : '<div class="empty">No languages yet</div>'}</div>
@@ -1177,6 +1178,10 @@ const ACT = {
   qaWater(a) { const t = today(), prev = day(t).water || 0; setDay(t, x => { x.water = round((x.water || 0) + +a); }); closeSheet(); render(); toast(`Water ${round(prev + +a)} L`, () => { setDay(t, x => { x.water = prev; }); render(); }); },
   repMode(m) { S.repMode = m; render(); },
   repMove(n) { const t = parseYmd(today()); let Y = S.repYear || t.getFullYear(), M = S.repMonth ?? t.getMonth(); if ((S.repMode || 'year') === 'month') { M += +n; if (M < 0) { M = 11; Y--; } if (M > 11) { M = 0; Y++; } } else Y += +n; S.repYear = Y; S.repMonth = M; render(); },
+  askDelSession(arg) { const [id, d] = arg.split('|'), s = item(id); openSheet(`<h2>Delete ${esc(s.data.subject)}?</h2><p class="small muted">This session repeats every ${(s.data.weekdays || []).map(w => DOWL[w]).join(', ')}.</p>
+    <button class="btn sec2 full mt" data-act="skipSession" data-arg="${id}|${d}">Only ${fmtDate(d)}</button><button class="btn danger full mt" data-act="delSession" data-arg="${id}">Every week (delete the whole session)</button>`); },
+  skipSession(arg) { const [id, d] = arg.split('|'), prev = item(id).data.skip || []; updItem(id, { skip: [...prev, d] }); closeSheet(); render(); toast(`Removed for ${fmtDate(d)}`, () => { updItem(id, { skip: prev }); render(); }); },
+  delSession(id) { closeSheet(); deleteWithUndo(id, 'Study session deleted'); render(); },
   delItemAct(id) { closeSheet(); deleteWithUndo(id); render(); },
   theme(k) { S.settings.theme = k; saveSettings(); render(); },
   toggleRem(k) { S.settings.reminders[k] = !S.settings.reminders[k]; saveSettings(); render(); },

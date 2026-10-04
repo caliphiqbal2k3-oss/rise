@@ -279,3 +279,5 @@ body.night .page .tabs button{color:#C9C2DE}body.night .page .tabs .on{backgroun
 body.night .dnav button{color:var(--ink)}.pscreen .dnav button{color:#4a4060}
 
 .faith-t .lbl{margin-top:10px}.faith-t .big span{font-size:14px;color:var(--sub);font-weight:400}
+
+.ses-del{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(194,65,59,.10)}.ses-del svg{width:17px;height:17px;fill:none;stroke:var(--danger);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
