@@ -277,3 +277,5 @@ body.night .page:not(.pscreen .page) .tabs{background:rgba(255,255,255,.07)}
 body.night .page .tabs button{color:#C9C2DE}body.night .page .tabs .on{background:#F4EEE4;color:#2A2438}
 .pscreen .tabs button{color:#4a4060}.pscreen .tabs .on{background:#fff;color:#2A2438}
 body.night .dnav button{color:var(--ink)}.pscreen .dnav button{color:#4a4060}
+
+.faith-t .lbl{margin-top:10px}.faith-t .big span{font-size:14px;color:var(--sub);font-weight:400}

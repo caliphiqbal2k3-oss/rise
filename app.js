@@ -9,7 +9,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '14';
+const APP_VERSION = '15';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -303,9 +303,9 @@ function applyTheme() {
   document.body.classList.toggle('night', night);
   const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = night ? '#0F1030' : '#FBF6EE';
 }
-const NAV = [['today', 'home', 'Today'], ['prayers', 'mosque', 'Prayers'], ['azkar', 'beads', 'Azkar'], ['study', 'cap', 'Study'], ['rel', 'heart', 'People'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
-const TAB_OF = { search: 'more', reports: 'more', notifs: 'today', person: 'rel', azkarEdit: 'azkar', duaEdit: 'azkar', reminders: 'more', quran: 'more', summary: 'more', dates: 'more', zakat: 'more', fasts: 'more', nazr: 'more', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
-const MAIN = ['today', 'prayers', 'azkar', 'study', 'rel', 'fitness', 'more'];
+const NAV = [['today', 'home', 'Today'], ['faith', 'crescent', 'Faith'], ['study', 'cap', 'Study'], ['rel', 'heart', 'People'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
+const TAB_OF = { prayers: 'faith', azkar: 'faith',  search: 'more', reports: 'more', notifs: 'today', person: 'rel', azkarEdit: 'faith', duaEdit: 'faith', reminders: 'more', quran: 'faith', summary: 'more', dates: 'more', zakat: 'faith', fasts: 'faith', nazr: 'faith', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
+const MAIN = ['today', 'faith', 'study', 'rel', 'fitness', 'more'];
 function nav() { const cur = TAB_OF[S.view] || S.view; return `${MAIN.includes(S.view) && !(S.view === 'rel' && relLocked()) ? '<button class="fab" data-act="quickAdd" aria-label="Quick add">+</button>' : ''}<nav class="nav">${NAV.map(([v, ic, l]) => `<button data-act="go" data-arg="${v}" class="${cur === v ? 'on' : ''}">${I[ic]}${l}</button>`).join('')}</nav>`; }
 function pageTop(title, backTo) { return `<div class="ph-top">${backTo ? `<button class="back" data-act="go" data-arg="${backTo}" aria-label="Back">${I.back}</button>` : ''}<h1>${esc(title)}</h1></div>`; }
 function ck(done) { return `<span class="ck ${done ? 'on' : ''}">${I.check}</span>`; }
@@ -328,7 +328,7 @@ function render() {
       return true;
     }
   });
-  if (S.view === 'today' || S.view === 'prayers') tick();
+  if (['today', 'prayers', 'faith'].includes(S.view)) tick();
 }
 
 /* ---------- Today ---------- */
@@ -403,7 +403,7 @@ function vPrayers() {
   const arcPath = (() => { const a1 = -210 * Math.PI / 180, a2 = 30 * Math.PI / 180; return `M ${150 + R * Math.cos(a1)} ${150 + R * Math.sin(a1)} A ${R} ${R} 0 1 1 ${150 + R * Math.cos(a2)} ${150 + R * Math.sin(a2)}`; })();
   const order = ['fajr', 'asr', 'sunrise', 'maghrib', 'dhuhr', 'isha'];
   const icons = { fajr: 'fajr', sunrise: 'sunrise', dhuhr: 'dhuhr', asr: 'asr', maghrib: 'maghrib', isha: 'isha' };
-  return `<div class="pscreen"><div class="page" style="padding-bottom:0">${pageTop('Prayers')}
+  return `<div class="pscreen"><div class="page" style="padding-bottom:0">${pageTop('Prayers', 'faith')}
   <div class="arcwrap"><svg viewBox="0 0 300 300"><path d="${arcPath}" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="10" stroke-linecap="round"/><path id="arc-prog" data-len="${len}" d="${arcPath}" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 ${len}"/><circle id="arc-dot" cx="0" cy="0" r="11" fill="#fff" style="filter:drop-shadow(0 0 8px rgba(255,255,255,.9))"/></svg>
    <div class="disc"><div class="s1">${ps.inIqamah ? 'Iqamah' : 'Next salah'}</div><div class="s2">${PN[ps.inIqamah ? ps.cur.p : ps.next.p]}</div><div class="s3">${fmt12(ps.inIqamah ? new Date(ps.iqamahAt).toTimeString().slice(0, 5) : timesFor(ps.next.date)[ps.next.p])}</div><div class="s4">${ps.inIqamah ? 'Time until iqamah' : 'Time until Adhan'}</div><div class="s5" id="disc-cd">--:--:--</div></div></div>
   <div class="wrap">
@@ -509,7 +509,7 @@ function miniBars(vals, dates, max, color, label) {
 
 /* ---------- More ---------- */
 function vMore() {
-  const rows = [['search', 'search', 'c2', 'Search', 'Notes, people, reminders, azkar…'], ['reports', 'chart', 'c5', 'Reports', 'Monthly, yearly and year in review'], ['quran', 'book', 'c3', 'Quran', `Page ${currentPage()} of 604`], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['zakat', 'crescent', 'c1', 'Zakat', items('zakat').length ? 'Date set' : 'No date set'], ['fasts', 'plate', 'c5', 'Fasts to make up', `${items('fast').reduce((a, f) => a + Math.max(0, f.data.total - f.data.done), 0)} remaining`], ['nazr', 'hand', 'c4', 'Nazr', `${items('nazr').filter(n => n.data.done < n.data.total).length} open`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => !m.data.done && m.data.date >= today()).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
+  const rows = [['search', 'search', 'c2', 'Search', 'Notes, people, reminders, azkar…'], ['reports', 'chart', 'c5', 'Reports', 'Monthly, yearly and year in review'], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => !m.data.done && m.data.date >= today()).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
   return `<div class="page">${pageTop('More')}<div class="wrap"><div class="list">${rows.map(r => `<button class="row" data-act="go" data-arg="${r[0]}">${icon(r[1], r[2])}<span class="t"><b>${r[3]}</b><span>${r[4]}</span></span>${I.chev}</button>`).join('')}</div></div></div>`;
 }
 
@@ -521,7 +521,7 @@ function vQuran() {
   let est = '';
   if (L.length > 1) { const first = L[0].data.date, days = diffDays(first, today()), read = page - (+L[0].data.page || 0); if (days >= 3 && read > 0 && page < 604) est = fmtDateY(addDays(today(), Math.ceil((604 - page) / (read / days)))); }
   const wk = [0, 1, 2, 3, 4, 5, 6].reduce((a, i) => a + quranMinutes(addDays(today(), -i)), 0);
-  return `<div class="page">${pageTop('Quran', 'more')}<div class="wrap">
+  return `<div class="page">${pageTop('Quran', 'faith')}<div class="wrap">
   <div class="list" style="padding:18px"><div class="small muted">You stopped at</div><div style="font-size:22px;font-weight:600;margin-top:4px">${last ? `Page ${last.data.page} · ${SURAH[last.data.surah]}${last.data.ayah ? ' · Ayah ' + last.data.ayah : ''}` : 'Not started yet'}</div>
    <div class="prog mt"><div class="bar" style="height:10px"><i style="width:${page / 604 * 100}%;background:#F0A43A"></i></div><b>${Math.round(page / 604 * 100)}%</b></div>
    <div class="three center mt"><div><b style="font-size:20px">${page}</b><div class="small muted">pages read</div></div><div><b style="font-size:20px">${604 - page}</b><div class="small muted">remaining</div></div><div><b style="font-size:20px">${wk}</b><div class="small muted">min this week</div></div></div>
@@ -557,7 +557,7 @@ function vDates() {
 }
 function vZakat() {
   const z = zakatDates();
-  return `<div class="page">${pageTop('Zakat', 'more')}<div class="wrap">${z?.first ? `<div class="list" style="padding:18px"><div class="small muted">Your zakat date</div><div style="font-size:24px;font-weight:600;margin-top:4px">${z.z.data.hd} ${HM[z.z.data.hm - 1]}</div>
+  return `<div class="page">${pageTop('Zakat', 'faith')}<div class="wrap">${z?.first ? `<div class="list" style="padding:18px"><div class="small muted">Your zakat date</div><div style="font-size:24px;font-weight:600;margin-top:4px">${z.z.data.hd} ${HM[z.z.data.hm - 1]}</div>
    <div class="mt"><div class="row"><span class="t"><b>Next</b><span>${hijriText(z.first)}</span></span><span class="r" style="color:var(--ink)"><b>${fmtDateY(z.first)}</b>${diffDays(today(), z.first)} days</span></div>
    ${z.second ? `<div class="row"><span class="t"><b>The year after</b><span>${hijriText(z.second)}</span></span><span class="r" style="color:var(--ink)"><b>${fmtDateY(z.second)}</b></span></div>` : ''}</div>
    <p class="small muted mt">Reminders 1 month and 1 week before. The Islamic date is calculated, so it can be one day off from the UAE moon sighting; you can adjust it in Settings.</p>
@@ -566,14 +566,14 @@ function vZakat() {
 }
 function vFasts() {
   const L = items('fast');
-  return `<div class="page">${pageTop('Fasts to make up', 'more')}<div class="wrap"><div class="list">${L.length ? L.map(f => `<div class="row"><span class="t"><b>${esc(f.data.title)}</b><span>${f.data.done} of ${f.data.total} done · ${Math.max(0, f.data.total - f.data.done)} remaining</span></span>${f.data.done < f.data.total ? `<button class="btn sm" data-act="fastDone" data-arg="${f.id}">Made up 1</button>` : '<span class="tag green">Done</span>'}<button class="link" style="margin-left:6px" data-act="sheetFast" data-arg="${f.id}">Edit</button></div>`).join('') : '<div class="empty">No fasts to make up</div>'}</div>
+  return `<div class="page">${pageTop('Fasts to make up', 'faith')}<div class="wrap"><div class="list">${L.length ? L.map(f => `<div class="row"><span class="t"><b>${esc(f.data.title)}</b><span>${f.data.done} of ${f.data.total} done · ${Math.max(0, f.data.total - f.data.done)} remaining</span></span>${f.data.done < f.data.total ? `<button class="btn sm" data-act="fastDone" data-arg="${f.id}">Made up 1</button>` : '<span class="tag green">Done</span>'}<button class="link" style="margin-left:6px" data-act="sheetFast" data-arg="${f.id}">Edit</button></div>`).join('') : '<div class="empty">No fasts to make up</div>'}</div>
   <button class="btn sec2 add" data-act="sheetFast">Add fasts owed</button>
   <div class="list" style="padding:14px"><div class="hstack" style="justify-content:space-between"><div><b>Reminders</b><div class="small muted">The evening before ${S.settings.fastDays.map(d => DOWL[d]).join(' and ')}</div></div><button class="toggle ${S.settings.reminders.fasts ? 'on' : ''}" data-act="toggleRem" data-arg="fasts" aria-label="Fast reminders"></button></div></div></div></div>`;
 }
 function vNazr() {
   const open = items('nazr').filter(n => n.data.done < n.data.total), closed = items('nazr').filter(n => n.data.done >= n.data.total);
   const row = n => `<div class="row"><span class="t"><b>${esc(n.data.title)}</b><span>${n.data.done} of ${n.data.total} done${n.data.done < n.data.total ? ' · ' + (n.data.total - n.data.done) + ' remaining' : ' · fulfilled ' + (n.data.doneAt ? fmtDateY(n.data.doneAt) : '')}${n.data.note ? ' · ' + esc(n.data.note) : ''}</span></span>${n.data.done < n.data.total ? `<button class="btn sm" data-act="nazrDone" data-arg="${n.id}">+1 done</button>` : ''}<button class="link" style="margin-left:6px" data-act="sheetNazr" data-arg="${n.id}">Edit</button></div>`;
-  return `<div class="page">${pageTop('Nazr', 'more')}<div class="wrap"><div class="list">${open.length ? open.map(row).join('') : '<div class="empty">No open vows</div>'}</div>
+  return `<div class="page">${pageTop('Nazr', 'faith')}<div class="wrap"><div class="list">${open.length ? open.map(row).join('') : '<div class="empty">No open vows</div>'}</div>
   <button class="btn sec2 add" data-act="sheetNazr">Add nazr</button>${closed.length ? `<div class="h2">Fulfilled</div><div class="list">${closed.map(row).join('')}</div>` : ''}</div></div>`;
 }
 function vNotes() {
@@ -595,7 +595,7 @@ function zikrProgress(date, part) { const c = ((day(date).azkar || {})[part] || 
 function vAzkar() {
   const tab = S.azTab || (new Date() >= adhan(today(), 'maghrib') ? 'masa' : 'sabah');
   S.azTab = tab;
-  const head = `<div class="page">${pageTop('Azkar')}<div class="wrap"><div class="tabs az-tabs">${[['sabah', 'Sabah · الصباح'], ['masa', 'Masa · المساء'], ['duas', "Du'as · الأدعية"]].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="azTab" data-arg="${k}">${l}</button>`).join('')}</div>`;
+  const head = `<div class="page">${pageTop('Azkar', 'faith')}<div class="wrap"><div class="tabs az-tabs">${[['sabah', 'Sabah · الصباح'], ['masa', 'Masa · المساء'], ['duas', "Du'as · الأدعية"]].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="azTab" data-arg="${k}">${l}</button>`).join('')}</div>`;
   if (tab === 'duas') {
     const L = duasList();
     return head + `<div class="hstack" style="justify-content:space-between;margin:2px 4px 10px"><span class="small muted">${L.length} du'as · tap a page to enlarge</span><button class="link" data-act="go" data-arg="duaEdit">Edit</button></div>
@@ -798,6 +798,24 @@ function vReports() {
   return head + navp + `<div class="score" style="margin-top:12px">${ring(s.possible ? Math.round(s.prayed / s.possible * 100) : 0)}<div><h3>${Y} in review</h3><p>${plural(s.days, 'day')} tracked with Rise</p></div></div>${table(rows)}</div></div>`;
 }
 
+/* ---------- Faith hub ---------- */
+function vFaith() {
+  const ps = prayerState(), pd = prayerDay(), pc = prayedCount(pd), qc = qadaCounts(), qt = PR.reduce((a, p) => a + qc[p], 0);
+  const ad = day(today()).azkar || {}, page = currentPage(), z = zakatDates();
+  const fastsLeft = items('fast').reduce((a, f) => a + Math.max(0, f.data.total - f.data.done), 0), nazrOpen = items('nazr').filter(n => n.data.done < n.data.total).length;
+  const tile = (v, ic, c, title, big, sub) => `<button class="card faith-t" data-act="go" data-arg="${v}">${icon(ic, c)}<div class="lbl">${title}</div><div class="big" style="font-size:22px">${big}</div><div class="small muted">${sub}</div></button>`;
+  return `<div class="page">${pageTop('Faith')}<div class="wrap">
+   <button class="prayer" data-act="go" data-arg="prayers"><small id="pc-label">${ps.inIqamah ? 'Iqamah in' : 'Next prayer'}</small><div class="n">${ps.inIqamah ? PN[ps.cur.p] + ' · Adhan ' + fmt12(timesFor(ps.cur.date)[ps.cur.p]) : PN[ps.next.p] + ' · ' + fmt12(timesFor(ps.next.date)[ps.next.p])}</div><div class="cd" id="pc-cd">--:--:--</div>
+    <div class="pills">${PR.map(p => `<span class="${(ps.inIqamah ? ps.cur.p : ps.next.p) === p ? 'on' : (day(pd).prayers || {})[p] ? 'done' : ''}">${PN[p]}</span>`).join('')}</div></button>
+   <div class="grid">
+    ${tile('prayers', 'mosque', 'c2', 'Prayers', `${pc} <span>/5</span>`, qt ? `${qt} qada to make up` : 'No qada')}
+    ${tile('azkar', 'beads', 'c3', 'Azkar', `${(ad.sabahDone ? 1 : 0) + (ad.masaDone ? 1 : 0)} <span>/2</span>`, `Morning ${ad.sabahDone ? '✓' : '–'} · Evening ${ad.masaDone ? '✓' : '–'}`)}
+    ${tile('quran', 'book', 'c3', 'Quran', `${page} <span>/604</span>`, quranDone(today()) ? 'Today done ✓' : `Goal ${S.settings.quranGoal} min`)}
+    ${tile('zakat', 'crescent', 'c1', 'Zakat', z?.first ? `${diffDays(today(), z.first)} <span>days</span>` : '–', z?.first ? fmtDate(z.first) : 'No date set')}
+    ${tile('fasts', 'plate', 'c5', 'Fasts to make up', `${fastsLeft}`, fastsLeft ? 'remaining' : 'None owed')}
+    ${tile('nazr', 'hand', 'c4', 'Nazr', `${nazrOpen}`, nazrOpen ? 'open' : 'All fulfilled')}
+   </div></div></div>`;
+}
 function vTasks() {
   return `<div class="page">${pageTop('My tasks', 'more')}<div class="wrap"><p class="muted small" style="margin:0 6px">Prayers, gym, Quran, languages, cardio, sleep and water are always on your checklist. Add your own tasks here.</p>
   <div class="list">${items('task').length ? items('task').map(t => `<button class="row" data-act="sheetTask" data-arg="${t.id}">${icon('tasks', 'c1')}<span class="t"><b>${esc(t.data.title)}</b><span>${t.data.repeat === 'daily' ? 'Every day' : t.data.repeat === 'once' ? 'Once · ' + fmtDateY(t.data.date) : (t.data.weekdays || []).map(w => DOW[w]).join(', ')}</span></span>${I.chev}</button>`).join('') : '<div class="empty">No extra tasks yet</div>'}</div>
@@ -1204,7 +1222,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => { const el = e.target.closest('[data-on]'); if (el && ON[el.dataset.on]) ON[el.dataset.on](el); });
 
-const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, search: vSearch, reports: vReports, notifs: vNotifs, rel: vRel, person: vPerson, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
+const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, faith: vFaith, search: vSearch, reports: vReports, notifs: vNotifs, rel: vRel, person: vPerson, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
 
 /* ================= REMINDERS ================= */
 // Rise works out the reminders for the next 7 days and stores them; a small service on Supabase sends them on time.

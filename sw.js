@@ -1,5 +1,5 @@
 // Rise service worker: works offline and shows push notifications
-const CACHE = 'rise-v14';
+const CACHE = 'rise-v15';
 const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'praycalc.js', 'morphdom.js', 'azkar-data.js', 'manifest.webmanifest',
   'assets/icon-192.png', 'assets/dragon-icon.png', 'assets/header-day.webp', 'assets/header-night.webp',
   'assets/prayer-day.webp', 'assets/prayer-night.webp', 'assets/prayer-screen.webp', 'assets/score.webp',
