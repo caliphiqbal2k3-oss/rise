@@ -9,7 +9,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '18';
+const APP_VERSION = '19';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -310,7 +310,6 @@ function checklist(date) {
   L.push({ key: 'cardio', icon: 'walk', c: 'c5', title: 'Cardio', sub: cm ? `${cm} min` : 'Walk or bike', done: cm > 0, act: 'sheetCardio', arg: date });
   L.push({ key: 'sleep', icon: 'moon', c: 'c2', title: 'Sleep', sub: d.sleep != null ? `${d.sleep} hours` : 'How long did you sleep?', done: d.sleep != null, act: 'sheetSleep', arg: date });
   L.push({ key: 'water', icon: 'drop', c: 'c4', title: 'Water', sub: `${round(d.water || 0)} of ${S.settings.waterGoal} L`, done: (d.water || 0) >= S.settings.waterGoal, act: 'sheetWater', arg: date });
-  items('reminder').filter(m => remOn(m, date)).flatMap(m => remTimes(m).map(tm => [m, tm])).sort((a, b) => toMin(a[1]) - toMin(b[1])).forEach(([m, tm]) => L.push({ key: 'rem' + m.id + tm, icon: 'bell', c: 'c6', title: m.data.title, sub: `Reminder · ${fmt12(tm)}${m.data.note ? ' · ' + m.data.note : ''}`, done: remDone(m, date, tm), act: 'toggleRemAt', arg: `${m.id}|${date}|${tm}`, tick: true }));
   for (const t of tasksFor(date)) L.push({ key: 'task' + t.id, icon: 'tasks', c: 'c1', title: t.data.title, sub: t.data.repeat === 'once' ? 'Today' : t.data.repeat === 'daily' ? 'Every day' : (t.data.weekdays || []).map(w => DOW[w]).join(', '), done: !!(d.tasks || {})[t.id], act: 'toggleTask', arg: t.id + '|' + date, tick: true });
   return L;
 }
