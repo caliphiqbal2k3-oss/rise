@@ -294,3 +294,10 @@ body.night .dnav button{color:var(--ink)}.pscreen .dnav button{color:#4a4060}
 .pick.calday:disabled { opacity: .3; }
 .pick.calday.exam::after { content: ''; position: absolute; bottom: 4px; left: 50%; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: #C0392B; }
 .calmo { width: 100%; } .calmo[hidden] { display: none; }
+/* own reminders: repeat modes and several times a day */
+#remmode .only-weekdays, #remmode .only-dates, #remmode .only-once, #remmode .only-range { display: none; }
+#remmode[data-mode="once"] .only-once, #remmode[data-mode="weekdays"] .only-weekdays, #remmode[data-mode="dates"] .only-dates { display: block; }
+#remmode[data-mode="daily"] .only-range, #remmode[data-mode="weekdays"] .only-range { display: grid; }
+.rtime { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.rtime .inp { flex: 1; }
+.two > * { min-width: 0; } .two .inp { min-width: 0; width: 100%; box-sizing: border-box; }

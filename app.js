@@ -9,7 +9,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '17';
+const APP_VERSION = '18';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -249,6 +249,31 @@ const quranMinutes = date => quranToday(date).reduce((a, q) => a + (+q.data.minu
 const quranDone = date => { const l = quranToday(date); return l.length > 0 && (quranMinutes(date) >= S.settings.quranGoal || l.some(q => !q.data.minutes)); };
 const isGymDay = date => S.settings.gymDays.includes(parseYmd(date).getDay());
 function tasksFor(date) { const wd = parseYmd(date).getDay(); return items('task').filter(t => t.data.repeat === 'daily' || (t.data.repeat === 'weekdays' && (t.data.weekdays || []).includes(wd)) || (t.data.repeat === 'once' && t.data.date === date)); }
+/* own reminders: once, every day, chosen weekdays or specific dates, one or more times a day */
+const remRep = m => m.data.repeat || 'once';
+const remTimes = m => [...(m.data.times || (m.data.time ? [m.data.time] : []))].sort((a, b) => toMin(a) - toMin(b));
+function remOn(m, d) {
+  const r = remRep(m), x = m.data;
+  if (r === 'once') return x.date === d;
+  if (r === 'dates') return (x.dates || []).includes(d);
+  if (x.date && d < x.date) return false; if (x.until && d > x.until) return false;
+  return r === 'daily' || (x.weekdays || []).includes(parseYmd(d).getDay());
+}
+const remDone = (m, d, tm) => !!m.data.done || !!(m.data.doneAt || {})[d + ' ' + tm];
+function remNext(m, from) { // first date from `from` that still has a time not ticked
+  const r = remRep(m), lim = r === 'dates' ? Math.max(0, ...(m.data.dates || []).map(d => diffDays(from, d))) : r === 'once' ? Math.max(0, diffDays(from, m.data.date)) : 400;
+  for (let i = 0; i <= lim; i++) { const d = addDays(from, i); if (remOn(m, d) && remTimes(m).some(tm => !remDone(m, d, tm))) return d; }
+  return null;
+}
+const remTimeRow = v => `<div class="rtime"><input class="inp" type="time" name="rtime" value="${v}"><button type="button" class="ses-del" data-act="delRemTime" aria-label="Remove time">${I.trash}</button></div>`;
+function remWhen(m) {
+  const r = remRep(m), x = m.data, tt = remTimes(m).map(fmt12).join(', ');
+  const rng = (x.date ? ' from ' + fmtDate(x.date) : '') + (x.until ? ' until ' + fmtDate(x.until) : '');
+  if (r === 'once') return `${fmtDate(x.date)} · ${tt}`;
+  if (r === 'dates') return `on ${datesText(x.dates || [])} · ${tt}`;
+  if (r === 'daily') return `Every day${x.date && x.date > today() ? ' from ' + fmtDate(x.date) : ''}${x.until ? ' until ' + fmtDate(x.until) : ''} · ${tt}`;
+  return `Every ${(x.weekdays || []).slice().sort().map(w => DOW[w]).join(', ')}${x.date && x.date > today() ? ' from ' + fmtDate(x.date) : ''}${x.until ? ' until ' + fmtDate(x.until) : ''} · ${tt}`;
+}
 function sessionsFor(date) { const wd = parseYmd(date).getDay(); return items('session').filter(s => ((s.data.weekdays || []).includes(wd) || (s.data.dates || []).includes(date)) && !(s.data.skip || []).includes(date)).sort((a, b) => toMin(a.data.start) - toMin(b.data.start)); }
 const sesMode = s => s.data.mode || ((s.data.dates || []).length && !(s.data.weekdays || []).length ? 'dates' : 'week');
 function datesText(ds, from) {
@@ -285,7 +310,7 @@ function checklist(date) {
   L.push({ key: 'cardio', icon: 'walk', c: 'c5', title: 'Cardio', sub: cm ? `${cm} min` : 'Walk or bike', done: cm > 0, act: 'sheetCardio', arg: date });
   L.push({ key: 'sleep', icon: 'moon', c: 'c2', title: 'Sleep', sub: d.sleep != null ? `${d.sleep} hours` : 'How long did you sleep?', done: d.sleep != null, act: 'sheetSleep', arg: date });
   L.push({ key: 'water', icon: 'drop', c: 'c4', title: 'Water', sub: `${round(d.water || 0)} of ${S.settings.waterGoal} L`, done: (d.water || 0) >= S.settings.waterGoal, act: 'sheetWater', arg: date });
-  for (const m of items('reminder').filter(m => m.data.date === date).sort((a, b) => toMin(a.data.time) - toMin(b.data.time))) L.push({ key: 'rem' + m.id, icon: 'bell', c: 'c6', title: m.data.title, sub: `Reminder · ${fmt12(m.data.time)}${m.data.note ? ' · ' + m.data.note : ''}`, done: !!m.data.done, act: 'toggleReminder', arg: m.id, tick: true });
+  items('reminder').filter(m => remOn(m, date)).flatMap(m => remTimes(m).map(tm => [m, tm])).sort((a, b) => toMin(a[1]) - toMin(b[1])).forEach(([m, tm]) => L.push({ key: 'rem' + m.id + tm, icon: 'bell', c: 'c6', title: m.data.title, sub: `Reminder · ${fmt12(tm)}${m.data.note ? ' · ' + m.data.note : ''}`, done: remDone(m, date, tm), act: 'toggleRemAt', arg: `${m.id}|${date}|${tm}`, tick: true }));
   for (const t of tasksFor(date)) L.push({ key: 'task' + t.id, icon: 'tasks', c: 'c1', title: t.data.title, sub: t.data.repeat === 'once' ? 'Today' : t.data.repeat === 'daily' ? 'Every day' : (t.data.weekdays || []).map(w => DOW[w]).join(', '), done: !!(d.tasks || {})[t.id], act: 'toggleTask', arg: t.id + '|' + date, tick: true });
   return L;
 }
@@ -529,7 +554,7 @@ function miniBars(vals, dates, max, color, label) {
 
 /* ---------- More ---------- */
 function vMore() {
-  const rows = [['search', 'search', 'c2', 'Search', 'Notes, people, reminders, azkar…'], ['reports', 'chart', 'c5', 'Reports', 'Monthly, yearly and year in review'], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => !m.data.done && m.data.date >= today()).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
+  const rows = [['search', 'search', 'c2', 'Search', 'Notes, people, reminders, azkar…'], ['reports', 'chart', 'c5', 'Reports', 'Monthly, yearly and year in review'], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => remNext(m, today())).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
   return `<div class="page">${pageTop('More')}<div class="wrap"><div class="list">${rows.map(r => `<button class="row" data-act="go" data-arg="${r[0]}">${icon(r[1], r[2])}<span class="t"><b>${r[3]}</b><span>${r[4]}</span></span>${I.chev}</button>`).join('')}</div></div></div>`;
 }
 
@@ -601,9 +626,9 @@ function vNotes() {
   return `<div class="page">${pageTop('Notes', 'more')}<div class="wrap"><div class="list">${L.length ? L.map(n => `<button class="row" data-act="sheetNote" data-arg="${n.id}">${icon('note', 'c3')}<span class="t"><b>${esc(n.data.title || 'Untitled')}</b><span>${esc((n.data.body || '').slice(0, 80))}</span></span></button>`).join('') : '<div class="empty">Write anything you want to keep</div>'}</div><button class="btn sec2 add" data-act="sheetNote">New note</button></div></div>`;
 }
 function vReminders() {
-  const t = today(), all = items('reminder').sort((a, b) => (a.data.date + a.data.time < b.data.date + b.data.time ? -1 : 1));
-  const up = all.filter(m => !m.data.done && m.data.date >= t), rest = all.filter(m => m.data.done || m.data.date < t).reverse();
-  const row = m => { const n = diffDays(t, m.data.date); return `<div class="row"><button class="ck ${m.data.done ? 'on' : ''}" data-act="toggleReminder" data-arg="${m.id}">${I.check}</button><button class="t" style="text-align:left" data-act="sheetReminder" data-arg="${m.id}"><b>${esc(m.data.title)}</b><span>${fmtDate(m.data.date)} · ${fmt12(m.data.time)}${m.data.note ? ' · ' + esc(m.data.note) : ''}</span></button>${!m.data.done && n >= 0 ? `<span class="tag ${n <= 1 ? 'red' : ''}">${n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n + ' days'}</span>` : ''}</div>`; };
+  const t = today(), all = items('reminder').map(m => [m, remNext(m, t)]);
+  const up = all.filter(x => x[1]).sort((a, b) => a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0).map(x => x[0]), rest = all.filter(x => !x[1]).map(x => x[0]).reverse();
+  const row = m => { const nx = remNext(m, t), n = nx ? diffDays(t, nx) : -1, rr = remRep(m) !== 'once'; if (rr || remTimes(m).length > 1) return `<div class="row">${icon('bell', 'c6')}<button class="t" style="text-align:left" data-act="sheetReminder" data-arg="${m.id}"><b>${esc(m.data.title)}</b><span>${esc(remWhen(m))}${m.data.note ? ' · ' + esc(m.data.note) : ''}</span></button>${n >= 0 ? `<span class="tag ${n <= 1 ? 'red' : ''}">${n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n + ' days'}</span>` : ''}</div>`; return `<div class="row"><button class="ck ${m.data.done ? 'on' : ''}" data-act="toggleReminder" data-arg="${m.id}">${I.check}</button><button class="t" style="text-align:left" data-act="sheetReminder" data-arg="${m.id}"><b>${esc(m.data.title)}</b><span>${fmtDate(m.data.date)} · ${fmt12(m.data.time)}${m.data.note ? ' · ' + esc(m.data.note) : ''}</span></button>${!m.data.done && n >= 0 ? `<span class="tag ${n <= 1 ? 'red' : ''}">${n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n + ' days'}</span>` : ''}</div>`; };
   return `<div class="page">${pageTop('My reminders', 'more')}<div class="wrap"><div class="list">${up.length ? up.map(row).join('') : '<div class="empty">Add something you want to be reminded about</div>'}</div>
   <button class="btn add" data-act="sheetReminder">Add reminder</button>
   ${rest.length ? `<div class="h2">Done and past</div><div class="list">${rest.slice(0, 30).map(row).join('')}</div>` : ''}</div></div>`;
@@ -695,7 +720,7 @@ function importantSoon(days = 7) {
   const inWin = d => { const n = diffDays(t, d); return n >= 0 && n <= days; };
   for (const e of items('exam')) if (inWin(e.data.date)) L.push({ date: e.data.date, time: e.data.time, icon: 'cap', title: `${e.data.subject} ${e.data.type}`, sub: e.data.chapters || 'Exam', go: 'study' });
   for (const a of items('assignment')) if (!a.data.submitted && inWin(a.data.due)) L.push({ date: a.data.due, time: a.data.time, icon: 'doc', title: a.data.title, sub: 'Assignment due' + (a.data.subject ? ' · ' + a.data.subject : ''), go: 'study' });
-  for (const m of items('reminder')) if (!m.data.done && inWin(m.data.date)) L.push({ date: m.data.date, time: m.data.time, icon: 'bell', title: m.data.title, sub: m.data.note || 'Reminder', go: 'reminders' });
+  for (const m of items('reminder')) for (let i = 0; i <= days; i++) { const d = addDays(t, i); if (remOn(m, d)) { const tt = remTimes(m).filter(tm => !remDone(m, d, tm)); if (tt.length) { L.push({ date: d, time: tt[0], icon: 'bell', title: m.data.title, sub: (tt.length > 1 ? tt.map(fmt12).join(', ') : m.data.note) || 'Reminder', go: 'reminders' }); if (remRep(m) !== 'once' && remRep(m) !== 'dates') break; } } }
   for (const p of relPeople()) { if (p.data.status === 'Ended') continue;
     for (const f of p.data.followups || []) if (!f.done && diffDays(t, f.date) <= days) L.push({ date: f.date < t ? t : f.date, time: f.time, icon: 'heart', title: nt ? 'Follow-up' : f.text, sub: nt ? 'Relationships' : p.data.name + (f.date < t ? ' · overdue' : ''), go: 'rel' });
     if (p.data.bday?.d) { const b = nextYearly(p.data.bday.m, p.data.bday.d); if (inWin(b)) L.push({ date: b, icon: 'gift', title: nt ? 'Birthday' : `${p.data.name}'s birthday`, sub: 'Relationships', go: 'rel' }); } }
@@ -725,7 +750,7 @@ function vSearch() {
       const ev = (p.data.events || []).map(e => e.text).join(' '), fu = (p.data.followups || []).map(f => f.text).join(' ');
       if (has(p.data.name, p.data.notes, ev, fu, ...Object.values(p.data.info || {}))) R.push(['heart', 'Person', p.data.name, p.data.status, 'openPerson', p.id]);
     }
-    for (const m of items('reminder')) if (has(m.data.title, m.data.note)) R.push(['bell', 'Reminder', m.data.title, fmtDate(m.data.date) + ' · ' + fmt12(m.data.time), 'sheetReminder', m.id]);
+    for (const m of items('reminder')) if (has(m.data.title, m.data.note)) R.push(['bell', 'Reminder', m.data.title, remWhen(m), 'sheetReminder', m.id]);
     for (const t of items('task')) if (has(t.data.title)) R.push(['tasks', 'Task', t.data.title, '', 'sheetTask', t.id]);
     for (const e of items('exam')) if (has(e.data.subject, e.data.type, e.data.chapters)) R.push(['cap', 'Exam', e.data.subject + ' ' + e.data.type, fmtDate(e.data.date), 'sheetExam', e.id]);
     for (const a of items('assignment')) if (has(a.data.title, a.data.subject)) R.push(['doc', 'Assignment', a.data.title, 'Due ' + fmtDate(a.data.due), 'sheetAsg', a.id]);
@@ -1027,9 +1052,14 @@ const SHEETS = {
     ${fld('Days (for chosen days)', picks('weekdays', weekdayOpts, (t?.data.weekdays || []).map(String)))}${fld('Date (for once)', inp('date', t?.data.date || today(), 'date'))}${saveBtns('saveTask', id || '', id ? 'delItemAct' : '')}`);
   },
   sheetReminder(id) {
-    const m = id ? item(id) : null, now = new Date(); const later = new Date(now.getTime() + 3600e3);
-    openSheet(`<h2>${m ? 'Edit reminder' : 'New reminder'}</h2>${fld('Remind me to', inp('title', m?.data.title || '', 'text', 'placeholder="e.g. Call the bank"'))}
-    <div class="two">${fld('Date', inp('date', m?.data.date || today(), 'date'))}${fld('Time', inp('time', m?.data.time || `${pad(later.getHours())}:00`, 'time'))}</div>
+    const m = id ? item(id) : null, later = new Date(Date.now() + 3600e3), rep = m ? remRep(m) : 'once', tt = m ? remTimes(m) : [`${pad(later.getHours())}:00`];
+    openSheet(`<h2>${m ? 'Edit reminder' : 'New reminder'}</h2>${fld('Remind me to', inp('title', m?.data.title || '', 'text', 'placeholder="e.g. Take vitamins"'))}
+    <div id="remmode" data-mode="${rep}">${fld('Repeat', picks('rrep', [['once', 'Once'], ['daily', 'Every day'], ['weekdays', 'Chosen days'], ['dates', 'Specific dates']], [rep], false))}
+    <div class="only-weekdays">${fld('Days', picks('rwd', weekdayOpts, (m?.data.weekdays || []).map(String)))}</div>
+    <div class="only-dates">${fld('Dates', calPicker('rdates', m?.data.dates || []))}</div>
+    <div class="only-once">${fld('Date', inp('date', m?.data.date || today(), 'date'))}</div>
+    <div class="only-range two">${fld('Starts', inp('rstart', m?.data.date || today(), 'date'))}${fld('Ends (optional)', inp('runtil', m?.data.until || '', 'date'))}</div></div>
+    ${fld('Times', `<div id="rtimes">${tt.map(remTimeRow).join('')}</div><button type="button" class="link" data-act="addRemTime" style="margin:6px 2px">+ Add another time</button>`)}
     ${fld('Note', inp('note', m?.data.note || '', 'text', 'placeholder="Optional"'))}${saveBtns('saveReminder', id || '', id ? 'delItemAct' : '')}`);
   },
   sheetZikr(id) {
@@ -1136,12 +1166,23 @@ const ACT = {
   saveNote(id) { const data = { title: val('title'), body: val('body'), updated: new Date().toISOString() }; if (!data.title && !data.body) return closeSheet(); id ? updItem(id, data) : addItem('note', data); done('Note saved'); },
   saveTask(id) { const data = { title: val('title'), repeat: picked('repeat')[0] || 'daily', weekdays: picked('weekdays').map(Number), date: val('date') }; if (!need(data.title, 'Enter the task')) return; if (data.repeat === 'weekdays' && !data.weekdays.length) return toast('Choose at least one day'); id ? updItem(id, data) : addItem('task', data); done('Task saved'); },
   saveReminder(id) {
-    const data = { title: val('title'), date: val('date'), time: val('time'), note: val('note') };
-    if (!need(data.title, 'Enter what to remind you about') || !need(data.date, 'Pick a date') || !need(data.time, 'Pick a time')) return;
-    if (at(data.date, data.time) < new Date()) return toast('That time has already passed');
-    if (id) updItem(id, { ...data, done: false }); else addItem('reminder', { ...data, done: false });
-    done(`Reminder set for ${fmtDate(data.date)} at ${fmt12(data.time)}`);
+    const repeat = picked('rrep')[0] || 'once', times = [...new Set($$('#sheet-root [name=rtime]').map(e => e.value).filter(Boolean))].sort((a, b) => toMin(a) - toMin(b));
+    const data = { title: val('title'), note: val('note'), repeat, times, time: times[0] || '', weekdays: [], dates: [], date: '', until: '' };
+    if (!need(data.title, 'Enter what to remind you about')) return; if (!times.length) return toast('Add at least one time');
+    if (repeat === 'once') { data.date = val('date'); if (!need(data.date, 'Pick a date')) return; if (times.every(tm => at(data.date, tm) < new Date())) return toast('That time has already passed'); }
+    if (repeat === 'daily' || repeat === 'weekdays') { data.date = val('rstart') || today(); data.until = val('runtil'); if (data.until && data.until < data.date) return toast('The end date is before the start date'); }
+    if (repeat === 'weekdays') { data.weekdays = picked('rwd').map(Number); if (!data.weekdays.length) return toast('Choose at least one day'); }
+    if (repeat === 'dates') { const keep = id ? (item(id).data.dates || []).filter(d => d < calToday()) : []; data.dates = [...new Set([...keep, ...picked('rdates')])].sort(); if (!picked('rdates').length) return toast('Choose at least one date'); }
+    const prev = id ? item(id).data : null, same = prev && JSON.stringify([prev.repeat || 'once', prev.date, prev.dates || [], prev.weekdays || []]) === JSON.stringify([repeat, data.date, data.dates, data.weekdays]);
+    const extra = { done: false, doneAt: same ? (prev.doneAt || {}) : {} };
+    if (id) updItem(id, { ...data, ...extra }); else addItem('reminder', { ...data, ...extra });
+    const tt = times.map(fmt12).join(', ');
+    done(repeat === 'once' ? `Reminder set for ${fmtDate(data.date)} at ${tt}` : `Reminder set · ${tt}`);
   },
+  addRemTime() { const box = $('#rtimes'), last = $$('#rtimes [name=rtime]').map(e => e.value).filter(Boolean).sort().pop() || '08:00', h = (Math.floor(toMin(last) / 60) + 3) % 24; box.insertAdjacentHTML('beforeend', remTimeRow(`${pad(h)}:${last.slice(3, 5)}`)); },
+  delRemTime(_, e) { if ($$('#rtimes .rtime').length < 2) return toast('Keep at least one time'); e.target.closest('.rtime').remove(); },
+  toggleRemAt(arg) { const [id, d, tm] = arg.split('|'), m = item(id); if (m.data.done && remRep(m) === 'once' && remTimes(m).length === 1) return ACT.toggleReminder(id);
+    const k = d + ' ' + tm, prev = m.data.doneAt || {}, was = !!prev[k], nx = { ...prev, [k]: !was }; if (!nx[k]) delete nx[k]; updItem(id, { doneAt: nx, done: false }); render(); if (was) toast('Unticked', () => { updItem(id, { doneAt: prev }); render(); }); },
   toggleReminder(id) { const m = item(id), was = m.data.done; updItem(id, { done: !was }); render(); if (was) toast('Unticked', () => { updItem(id, { done: true }); render(); }); },
   goAzkar(t) { S.azTab = t; ACT.go('azkar'); },
   azTab(t) { S.azTab = t; render(); window.scrollTo(0, 0); if (t === 'duas') prefetchDuas(); },
@@ -1244,6 +1285,7 @@ document.addEventListener('click', e => {
   const pk = e.target.closest('[data-pick]');
   const cn = e.target.closest('[data-cal]');
   if (cn) { const mo = cn.closest('.calmo'), nx = mo.parentElement.querySelector(`.calmo[data-m="${+mo.dataset.m + +cn.dataset.cal}"]`); if (nx) { mo.hidden = true; nx.hidden = false; } return; }
+  if (pk && pk.dataset.pick === 'rrep') { const m = $('#remmode'); if (m) m.dataset.mode = pk.dataset.v; }
   if (pk && pk.dataset.pick === 'srep') { const m = $('#sesmode'); if (m) m.dataset.mode = pk.dataset.v; }
   if (pk) { if (pk.dataset.multi === '0') $$(`[data-pick="${pk.dataset.pick}"]`, pk.parentElement).forEach(b => b.classList.toggle('on', b === pk)); else pk.classList.toggle('on'); return; }
   const el = e.target.closest('[data-act]'); if (!el) return;
@@ -1262,7 +1304,8 @@ function buildReminders(since) {
   const push = (when, title, body, tag, url = './') => { if (when > now) out.push({ at: when.toISOString(), title, body, tag, url }); };
   if (r.azkar) for (let i = 0; i < 7; i++) { const d = addDays(t, i), ad = day(d).azkar || {}; if (!ad.sabahDone) push(new Date(adhan(d, 'fajr').getTime() + 30 * 60e3), 'Morning azkar', 'أذكار الصباح · tap to start', `az-s-${d}`, './?v=azkar&t=sabah'); if (!ad.masaDone) push(new Date(adhan(d, 'maghrib').getTime() + 15 * 60e3), 'Evening azkar', 'أذكار المساء · tap to start', `az-m-${d}`, './?v=azkar&t=masa'); }
   if (r.rel) for (const p of relPeople()) for (const f of (p.data.followups || [])) if (!f.done && diffDays(t, f.date) >= 0 && diffDays(t, f.date) <= 60) push(at(f.date, f.time || '10:00'), r.relNeutral ? 'Reminder' : `${p.data.name}: follow up`, r.relNeutral ? 'Open Rise for details' : f.text, `rf-${p.id}-${f.id}`, './?v=rel');
-  if (r.custom) for (const m of items('reminder')) if (!m.data.done && diffDays(t, m.data.date) <= 60) push(at(m.data.date, m.data.time), m.data.title, m.data.note || 'Your reminder from Rise', `rm-${m.id}`, './?v=reminders');
+  if (r.custom) for (const m of items('reminder')) { if (m.data.done) continue; const once = remRep(m) === 'once', span = once || remRep(m) === 'dates' ? 60 : 21;
+    for (let i = 0; i <= span; i++) { const d = addDays(t, i); if (remOn(m, d)) for (const tm of remTimes(m)) if (!remDone(m, d, tm)) push(at(d, tm), m.data.title, m.data.note || 'Your reminder from Rise', once && remTimes(m).length === 1 ? `rm-${m.id}` : `rm-${m.id}-${d}-${tm.replace(':', '')}`, './?v=reminders'); } }
   for (let i = 0; i < 7; i++) {
     const d = addDays(t, i), wd = parseYmd(d).getDay(), dd = day(d);
     if (r.prayers) for (const p of PR) push(adhan(d, p), PN[p], `It's time for ${PN[p]} · iqamah in ${st.iqamah[p]} min`, `pr-${d}-${p}`, './?v=prayers');
