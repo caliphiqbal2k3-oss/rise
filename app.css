@@ -301,3 +301,16 @@ body.night .dnav button{color:var(--ink)}.pscreen .dnav button{color:#4a4060}
 .rtime { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
 .rtime .inp { flex: 1; }
 .two > * { min-width: 0; } .two .inp { min-width: 0; width: 100%; box-sizing: border-box; }
+/* language phrases + voice notes */
+.ph-row { align-items: center; gap: 10px; }
+.ph-text { font-size: 17px; }
+.ph-row .t span { display: block; }
+.ph-play { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 50%; border: 0; background: var(--gold); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.ph-audio { display: flex; align-items: center; gap: 12px; background: var(--input); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+.ph-audio .btn { width: auto; padding: 8px 14px; display: inline-flex; gap: 6px; align-items: center; }
+.btn svg { vertical-align: -3px; }
+.rec-dot { width: 12px; height: 12px; border-radius: 50%; background: #D93025; animation: recp 1s infinite; }
+@keyframes recp { 50% { opacity: .3; } }
+.spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.5); border-top-color: #fff; border-radius: 50%; animation: spn .8s linear infinite; }
+@keyframes spn { to { transform: rotate(360deg); } }
+textarea.inp { height: auto; min-height: 64px; resize: vertical; }

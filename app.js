@@ -3,13 +3,14 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { calcTimes } from './praycalc.js';
 import morphdom from './morphdom.js';
 import { AZKAR, DUAS, AZKAR_QUOTE } from './azkar-data.js';
+import { prepareAudio, startRecording, stopRecording, isRecording, audioUrl, playUrl, stopPlayback } from './audio.js';
 
 const CFG = {
   url: 'https://xqlexvdshrkceguozfsc.supabase.co',
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '19';
+const APP_VERSION = '20';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -348,7 +349,7 @@ function applyTheme() {
   const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = night ? '#0F1030' : '#FBF6EE';
 }
 const NAV = [['today', 'home', 'Today'], ['faith', 'crescent', 'Faith'], ['study', 'cap', 'Study'], ['rel', 'heart', 'People'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
-const TAB_OF = { prayers: 'faith', azkar: 'faith',  search: 'more', reports: 'more', notifs: 'today', person: 'rel', azkarEdit: 'faith', duaEdit: 'faith', reminders: 'more', quran: 'faith', summary: 'more', dates: 'more', zakat: 'faith', fasts: 'faith', nazr: 'faith', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
+const TAB_OF = { lang: 'study', prayers: 'faith', azkar: 'faith',  search: 'more', reports: 'more', notifs: 'today', person: 'rel', azkarEdit: 'faith', duaEdit: 'faith', reminders: 'more', quran: 'faith', summary: 'more', dates: 'more', zakat: 'faith', fasts: 'faith', nazr: 'faith', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
 const MAIN = ['today', 'faith', 'study', 'rel', 'fitness', 'more'];
 function nav() { const cur = TAB_OF[S.view] || S.view; return `${MAIN.includes(S.view) && !(S.view === 'rel' && relLocked()) ? '<button class="fab" data-act="quickAdd" aria-label="Quick add">+</button>' : ''}<nav class="nav">${NAV.map(([v, ic, l]) => `<button data-act="go" data-arg="${v}" class="${cur === v ? 'on' : ''}">${I[ic]}${l}</button>`).join('')}</nav>`; }
 function pageTop(title, backTo) { return `<div class="ph-top">${backTo ? `<button class="back" data-act="go" data-arg="${backTo}" aria-label="Back">${I.back}</button>` : ''}<h1>${esc(title)}</h1></div>`; }
@@ -501,10 +502,37 @@ function vStudy() {
   <div class="h2">Study schedule${schedN > 7 ? '' : ' · next 7 days'}</div><div class="list">${[...Array(schedN).keys()].map(k => { const d = addDays(t, k), dt = parseYmd(d), L = sessionsFor(d); return L.length ? `<div class="row" style="align-items:flex-start"><span style="width:62px;padding-top:2px"><b style="color:var(--gold)">${k === 0 ? 'Today' : k === 1 ? 'Tmrw' : DOW[dt.getDay()]}</b><span class="small muted" style="display:block">${dt.getDate()} ${MON[dt.getMonth()]}</span></span><div class="t" style="flex:1;min-width:0">${L.map(s => { const dn = !!(day(d).sessions || {})[s.id]; return `<div style="display:flex;align-items:center;padding:3px 0;gap:10px"><button class="t" style="text-align:left" data-act="sheetSession" data-arg="${s.id}"><b style="${dn ? 'text-decoration:line-through;opacity:.6' : ''}">${esc(s.data.subject)}</b><span>${fmt12(s.data.start)}${s.data.end ? '–' + fmt12(s.data.end) : ''} · ${sesRepeat(s, t)}</span></button><button class="ses-del" data-act="askDelSession" data-arg="${s.id}|${d}" aria-label="Delete">${I.trash}</button></div>`; }).join('')}</div></div>` : ''; }).join('') || '<div class="empty">Plan which subject to study on which days</div>'}</div>
   <button class="btn sec2 add" data-act="sheetSession">${I.plus.replace('<svg', '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"')} Add study session</button>
 
-  <div class="h2">Languages</div><div class="list">${items('language').length ? items('language').map(l => { const wk = [0, 1, 2, 3, 4, 5, 6].reduce((a, i) => a + langMinutes(l.id, addDays(t, -i)), 0); return `<button class="row" data-act="sheetLangLog" data-arg="${l.id}">${l.data.icon === 'dragon' ? '<span class="dr"></span>' : icon('lang', 'c5')}<span class="t"><b>${esc(l.data.name)}${l.data.active === false ? ' · paused' : ''}</b><span>${l.data.minutes} min a day · reminder ${fmt12(l.data.time)} · ${wk} min this week</span></span><span class="tag">${langStreak(l)}-day streak</span></button>`; }).join('') : '<div class="empty">No languages yet</div>'}</div>
+  <div class="h2">Languages</div><div class="list">${items('language').length ? items('language').map(l => { const wk = [0, 1, 2, 3, 4, 5, 6].reduce((a, i) => a + langMinutes(l.id, addDays(t, -i)), 0); return `<button class="row" data-act="openLang" data-arg="${l.id}">${l.data.icon === 'dragon' ? '<span class="dr"></span>' : icon('lang', 'c5')}<span class="t"><b>${esc(l.data.name)}${l.data.active === false ? ' · paused' : ''}</b><span>${l.data.minutes} min a day · reminder ${fmt12(l.data.time)} · ${wk} min this week</span></span><span class="tag">${langStreak(l)}-day streak</span>${I.chev}</button>`; }).join('') : '<div class="empty">No languages yet</div>'}</div>
   <div class="two"><button class="btn sec2 add" data-act="sheetLang">Add language</button>${items('language').length ? '<button class="btn sec2 add" data-act="go" data-arg="langs">Edit languages</button>' : ''}</div>
   </div></div>`;
 }
+function vLang() {
+  const l = item(S.langId); if (!l) { S.view = 'study'; return vStudy(); }
+  const t = today(), m = langMinutes(l.id, t), q = (S.phq || '').trim().toLowerCase();
+  const all = items('phrase').filter(x => x.data.langId === l.id).sort((a, b) => (b.created_at || '') > (a.created_at || '') ? 1 : -1);
+  const L = q ? all.filter(x => [x.data.text, x.data.meaning, x.data.note].some(v => (v || '').toLowerCase().includes(q))) : all;
+  const pct = Math.min(100, Math.round(m / (l.data.minutes || 1) * 100));
+  return `<div class="page">${pageTop(l.data.name, 'study')}<div class="wrap">
+  <div class="list" style="padding:16px"><div class="hstack" style="gap:14px;align-items:center">${l.data.icon === 'dragon' ? '<span class="dr"></span>' : icon('lang', 'c5')}<div style="flex:1;min-width:0"><b>${m} of ${l.data.minutes} min today</b><div class="small muted">${langStreak(l)}-day streak · reminder ${fmt12(l.data.time)}</div><div class="bar mt" style="height:6px;border-radius:4px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:var(--gold)"></i></div></div></div>
+  <div class="two mt"><button class="btn" data-act="sheetLangLog" data-arg="${l.id}">Log study</button><button class="btn sec2" data-act="sheetLang" data-arg="${l.id}">Settings</button></div></div>
+  <div class="h2">Phrases · ${all.length}</div>
+  ${all.length > 4 ? `<input class="inp" type="search" placeholder="Search phrases" value="${esc(S.phq || '')}" data-on="phq" style="margin-bottom:10px">` : ''}
+  <div class="list">${L.length ? L.map(x => `<div class="row ph-row"><button class="t" style="text-align:left;flex:1;min-width:0" data-act="sheetPhrase" data-arg="${x.id}"><b class="ph-text" dir="auto">${esc(x.data.text)}</b>${x.data.meaning ? `<span>${esc(x.data.meaning)}</span>` : ''}${x.data.note ? `<span class="small muted">${esc(x.data.note)}</span>` : ''}</button>${x.data.audio ? `<button class="ph-play" id="pp-${x.id}" data-act="playPhrase" data-arg="${x.id}" aria-label="Play">${PLAY}</button>` : ''}</div>`).join('') : `<div class="empty">${q ? 'No phrase matches' : 'Save phrases you want to remember, with a voice note for the pronunciation'}</div>`}</div>
+  <button class="btn sec2 add" data-act="sheetPhrase" data-arg="|${l.id}">${I.plus.replace('<svg', '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"')} Add phrase</button>
+  </div></div>`;
+}
+const PLAY = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
+const STOP = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+const MIC = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+let PH = null; // voice note waiting to be saved in the phrase sheet
+const durTxt = d => d ? `${Math.floor(d / 60)}:${pad(Math.round(d % 60) % 60)}` : '';
+function phAudioBox(x) {
+  if (PH && PH.rec) return `<div class="ph-audio"><span class="rec-dot"></span><b style="flex:1">Recording… <span id="rec-t">0:00</span></b><button type="button" class="btn sec2" data-act="phStop">${STOP} Stop</button></div>`;
+  if (PH && PH.blob) return `<div class="ph-audio"><button type="button" class="ph-play" id="pp-new" data-act="phPlayNew" aria-label="Play">${PLAY}</button><b style="flex:1">New voice note${PH.dur ? ' · ' + durTxt(PH.dur) : ''}</b><button type="button" class="link" data-act="phClear">Remove</button></div>`;
+  if (x?.data.audio && !(PH && PH.removed)) return `<div class="ph-audio"><button type="button" class="ph-play" id="pp-${x.id}" data-act="playPhrase" data-arg="${x.id}" aria-label="Play">${PLAY}</button><b style="flex:1">Voice note${x.data.dur ? ' · ' + durTxt(x.data.dur) : ''}</b><button type="button" class="link" data-act="phClear">Remove</button></div>`;
+  return `<div class="two"><button type="button" class="btn sec2" data-act="phRecord">${MIC} Record</button><label class="btn sec2" style="display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer">Choose file<input type="file" id="ph-file" accept="audio/*,video/mp4,.opus,.ogg,.oga,.m4a,.mp3,.aac,.wav,.webm,.caf" hidden data-on="phFile"></label></div><p class="small muted" style="margin:6px 2px 0">WhatsApp: hold the voice note → Forward → Share → Save to Files, then Choose file. For Instagram (it doesn't let you save voice notes), play it on speaker and tap Record.</p>`;
+}
+function phRefresh() { const b = $('#ph-audio-box'); if (b) b.innerHTML = phAudioBox(item($('#ph-audio-box').dataset.id)); }
 function vLangs() {
   return `<div class="page">${pageTop('Languages', 'study')}<div class="wrap"><div class="list">${items('language').map(l => `<button class="row" data-act="sheetLang" data-arg="${l.id}">${l.data.icon === 'dragon' ? '<span class="dr"></span>' : icon('lang', 'c5')}<span class="t"><b>${esc(l.data.name)}</b><span>${l.data.minutes} min a day · reminder ${fmt12(l.data.time)}${l.data.active === false ? ' · paused' : ''}</span></span>${I.chev}</button>`).join('') || '<div class="empty">No languages</div>'}</div>
   <button class="btn sec2 add" data-act="sheetLang">Add language</button></div></div>`;
@@ -744,6 +772,7 @@ function vSearch() {
   const q = (S.q || '').trim().toLowerCase(), R = [];
   const has = (...xs) => xs.some(x => x && String(x).toLowerCase().includes(q));
   if (q.length >= 2) {
+    for (const x of items('phrase')) if (has(x.data.text, x.data.meaning, x.data.note)) R.push(['lang', 'Phrase · ' + (item(x.data.langId)?.data.name || ''), x.data.text, x.data.meaning || '', 'sheetPhrase', x.id]);
     for (const n of items('note')) if (has(n.data.title, n.data.body)) R.push(['note', 'Note', n.data.title || 'Untitled', (n.data.body || '').slice(0, 80), 'sheetNote', n.id]);
     if (!relLocked()) for (const p of relPeople()) {
       const ev = (p.data.events || []).map(e => e.text).join(' '), fu = (p.data.followups || []).map(f => f.text).join(' ');
@@ -941,7 +970,7 @@ function vImport() {
 
 /* ================= SHEETS ================= */
 function openSheet(html) { $('#sheet-root').innerHTML = `<div class="sheet-bg" data-act="closeBg"><div class="sheet" role="dialog"><div class="grab"></div>${html}</div></div>`; }
-function closeSheet() { $('#sheet-root').innerHTML = ''; }
+function closeSheet() { if (isRecording()) stopRecording(); stopPlayback(); PH = null; $('#sheet-root').innerHTML = ''; }
 const val = n => { const el = $(`#sheet-root [name="${n}"]`); return el ? el.value.trim() : ''; };
 const num = n => { const v = val(n); return v === '' ? null : +v; };
 const picked = n => $$(`#sheet-root [data-pick="${n}"].on`).map(b => b.dataset.v);
@@ -1215,6 +1244,51 @@ const ACT = {
     done("Du'a added at the end");
   },
   openPerson(id) { S.personId = id; ACT.go('person'); },
+  openLang(id) { S.langId = id; S.phq = ''; ACT.go('lang'); },
+  sheetPhrase(arg) {
+    const [id, lid] = String(arg).split('|'), x = id ? item(id) : null, langId = x?.data.langId || lid || S.langId; PH = null;
+    const langs = items('language');
+    openSheet(`<h2>${x ? 'Edit phrase' : 'New phrase'}</h2>${fld('Phrase', `<textarea class="inp" name="text" rows="2" dir="auto" placeholder="e.g. Valar morghulis">${esc(x?.data.text || '')}</textarea>`)}
+    ${fld('Meaning', inp('meaning', x?.data.meaning || '', 'text', 'placeholder="Optional · e.g. All men must die"'))}
+    ${fld('How to say it / note', inp('note', x?.data.note || '', 'text', 'placeholder="Optional · e.g. VAH-lar mor-GOO-lis"'))}
+    ${langs.length > 1 ? fld('Language', picks('plang', langs.map(l => [l.id, esc(l.data.name)]), [langId], false)) : `<input type="hidden" name="plang1" value="${langId}">`}
+    ${fld('Voice note', `<div id="ph-audio-box" data-id="${x?.id || ''}">${phAudioBox(x)}</div>`)}
+    ${saveBtns('savePhrase', (x?.id || '') + '|' + langId, x ? 'delPhrase' : '')}`);
+  },
+  async phRecord() {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast("Recording isn't available here");
+    try { await startRecording(); } catch (e) { return toast('Allow the microphone to record'); }
+    PH = { rec: true, t0: Date.now() }; phRefresh();
+    const tick = () => { const el = $('#rec-t'); if (!el || !isRecording()) return; el.textContent = durTxt((Date.now() - PH.t0) / 1000) || '0:00'; setTimeout(tick, 500); }; tick();
+  },
+  async phStop() { const r = await stopRecording(); PH = r && r.blob.size ? { ...r } : null; phRefresh(); },
+  phClear() { stopPlayback(); PH = { removed: true }; phRefresh(); },
+  phPlayNew() { if (!PH?.blob) return; PH.url = PH.url || URL.createObjectURL(PH.blob); const b = $('#pp-new'); const on = playUrl(PH.url, 'new', () => { const bb = $('#pp-new'); if (bb) bb.innerHTML = PLAY; }); if (b) b.innerHTML = on ? STOP : PLAY; },
+  async playPhrase(id) {
+    const x = item(id); if (!x?.data.audio) return; const setBtn = h => $$(`#pp-${id}`).forEach(b => b.innerHTML = h);
+    try { setBtn('<span class="spin"></span>'); const url = await audioUrl(sb, x.data.audio); const on = playUrl(url, id, () => setBtn(PLAY)); setBtn(on ? STOP : PLAY); }
+    catch (e) { console.warn(e); setBtn(PLAY); toast(navigator.onLine ? "Couldn't load the voice note" : 'Connect to the internet once to download this voice note'); }
+  },
+  async savePhrase(arg) {
+    const [id, lid] = arg.split('|'), text = $('#sheet-root [name=text]').value.trim(); if (!need(text, 'Write the phrase')) return;
+    if (PH && PH.rec) await ACT.phStop();
+    const langId = picked('plang')[0] || val('plang1') || lid, old = id ? item(id) : null;
+    const data = { text, meaning: val('meaning'), note: val('note'), langId, audio: old?.data.audio || '', dur: old?.data.dur || 0, atype: old?.data.atype || '' };
+    let oldPath = null;
+    if (PH && PH.removed) { oldPath = data.audio; data.audio = ''; data.dur = 0; data.atype = ''; }
+    if (PH && PH.blob) {
+      const btn = $('#sheet-root [data-act="savePhrase"]'); if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
+      const path = `${S.user.id}/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}.${PH.ext || 'm4a'}`;
+      const { error } = await sb.storage.from('rise-audio').upload(path, PH.blob, { contentType: PH.type, upsert: false });
+      if (error) { if (btn) { btn.disabled = false; btn.textContent = 'Save'; } console.warn(error); return toast(/bucket|not found/i.test(error.message || '') ? 'Voice notes need one setup step first (rise-audio.sql)' : navigator.onLine ? "Couldn't upload the voice note" : "You're offline · the voice note can be added when you're online"); }
+      try { const c = await caches.open('rise-audio'); await c.put('https://rise.local/audio/' + path, new Response(PH.blob, { headers: { 'content-type': PH.type } })); } catch {}
+      oldPath = data.audio || oldPath; data.audio = path; data.dur = PH.dur || 0; data.atype = PH.type;
+    }
+    if (oldPath && oldPath !== data.audio) sb.storage.from('rise-audio').remove([oldPath]).catch(() => {});
+    id ? updItem(id, data) : addItem('phrase', data); done(id ? 'Phrase saved' : 'Phrase added');
+  },
+  delPhrase(arg) { const id = arg.split('|')[0], path = item(id)?.data.audio; closeSheet(); deleteWithUndo(id, 'Phrase deleted'); render();
+    if (path) setTimeout(() => { if (!item(id)) sb.storage.from('rise-audio').remove([path]).catch(() => {}); }, 9000); },
   async relUnlock() { const v = $('#rel-pin').value; if (!v) return; if (await pinHash(v) === S.settings.relPin) { S.relOpen = true; render(); } else { toast('Wrong PIN'); $('#rel-pin').value = ''; } },
   savePerson(id) {
     const name = val('name'); if (!need(name, 'Enter a name')) return;
@@ -1277,6 +1351,9 @@ Object.assign(ACT, SHEETS);
 const ON = {
   relNote(el) { const id = el.dataset.arg; clearTimeout(ON._r); ON._r = setTimeout(() => updItem(id, { notes: el.value }), 700); },
   search(el) { S.q = el.value; render(); },
+  phq(el) { S.phq = el.value; render(); },
+  async phFile(el) { const f = el.files && el.files[0]; if (!f) return; if (f.size > 15e6) return toast('That file is too big (max 15 MB)');
+    try { toast('Preparing voice note…'); const r = await prepareAudio(f); PH = { ...r }; phRefresh(); toast('Voice note added'); } catch (e) { console.warn(e); toast("This file can't be played on this phone. Try Record instead."); } },
   dayNote(el) { const d = el.dataset.arg; clearTimeout(ON._n); ON._n = setTimeout(() => setDay(d, x => { x.note = el.value; }), 700); },
   pageSurah(el) { const p = +el.value; if (p >= 1 && p <= 604) { const s = $('#sheet-root [name=surah]'); if (s) s.value = surahForPage(p); } }
 };
@@ -1292,9 +1369,10 @@ document.addEventListener('click', e => {
   if (el.dataset.act === 'closeBg' && el !== e.target) return;
   e.preventDefault(); f(el.dataset.arg ?? '', e);
 });
-document.addEventListener('input', e => { const el = e.target.closest('[data-on]'); if (el && ON[el.dataset.on]) ON[el.dataset.on](el); });
+document.addEventListener('input', e => { const el = e.target.closest('[data-on]'); if (el && el.type !== 'file' && ON[el.dataset.on]) ON[el.dataset.on](el); });
+document.addEventListener('change', e => { const el = e.target.closest('[data-on]'); if (el && el.type === 'file' && ON[el.dataset.on]) ON[el.dataset.on](el); });
 
-const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, faith: vFaith, search: vSearch, reports: vReports, notifs: vNotifs, rel: vRel, person: vPerson, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
+const VIEWS = { today: vToday, prayers: vPrayers, study: vStudy, langs: vLangs, fitness: vFitness, more: vMore, quran: vQuran, summary: vSummary, dates: vDates, zakat: vZakat, fasts: vFasts, nazr: vNazr, notes: vNotes, tasks: vTasks, reminders: vReminders, faith: vFaith, search: vSearch, reports: vReports, notifs: vNotifs, rel: vRel, person: vPerson, lang: vLang, azkar: vAzkar, azkarEdit: vAzkarEdit, duaEdit: vDuaEdit, settings: vSettings, importTimes: vImport };
 
 /* ================= REMINDERS ================= */
 // Rise works out the reminders for the next 7 days and stores them; a small service on Supabase sends them on time.
