@@ -10,7 +10,7 @@ const CFG = {
   key: 'sb_publishable_TKOn0esFhNFyVP_V-IRzng_9jLX0nuC',
   vapid: 'BNUbiXDUvBrCQ9jNINz3HB-l6SWbhPnO6JKPRXx0rdt_162OHddmY5YdWBjgbwhgrMbxLo58N2fykMe9_1c0r4A'
 };
-const APP_VERSION = '20';
+const APP_VERSION = '21';
 const sb = createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true } });
 
 /* ---------------- small helpers ---------------- */
@@ -102,7 +102,7 @@ const surahForPage = p => { let s = 0; for (let i = 0; i < 114; i++) if (SURAH_P
 const TRAINED = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Abs', 'Full body'];
 
 const DEF = {
-  name: 'Khalifa', theme: 'auto', startDate: null,
+  name: 'Khalifa', theme: 'auto', startDate: null, hideCheck: [],
   iqamah: { fajr: 25, dhuhr: 20, asr: 20, maghrib: 5, isha: 20 },
   gymDays: [0, 1, 2, 3, 4], gymTimes: { 0: '18:30', 1: '18:30', 2: '18:30', 3: '18:30', 4: '18:30' }, gymNudge: 30,
   quranGoal: 30, quranTime: '21:00', waterGoal: 3, bodyDay: 5, bodyTime: '10:00', weeklyTime: '20:00', remindTime: '09:00',
@@ -295,6 +295,16 @@ function calPicker(name, sel, nMonths = 4) {
   }
   return `<div class="cal">${out}<p class="small muted" style="margin:6px 2px 0">Tap every date you will study this subject. Dates with a dot have an exam.</p></div>`;
 }
+const checkGroup = k => k.startsWith('ses') ? 'ses' : k;
+function checkGroups() { // everything that can be shown or hidden on the Today checklist
+  const G = [['prayers', 'mosque', 'c2', 'Prayers'], ['gym', 'dumbbell', 'c1', 'Gym (on gym days)'], ['quran', 'book', 'c3', 'Quran']];
+  for (const l of langs()) G.push(['lang' + l.id, 'lang', 'c5', l.data.name]);
+  if (items('session').length) G.push(['ses', 'cap', 'c2', 'Study sessions']);
+  if (items('zikr').length) G.push(['azs', 'beads', 'c3', 'Morning azkar'], ['azm', 'beads', 'c2', 'Evening azkar']);
+  G.push(['cardio', 'walk', 'c5', 'Cardio'], ['sleep', 'moon', 'c2', 'Sleep'], ['water', 'drop', 'c4', 'Water']);
+  for (const t of items('task')) G.push(['task' + t.id, 'tasks', 'c1', t.data.title]);
+  return G;
+}
 function checklist(date) {
   const d = day(date), L = [];
   const pdte = date === today() ? prayerDay() : date, pc = prayedCount(pdte);
@@ -312,7 +322,8 @@ function checklist(date) {
   L.push({ key: 'sleep', icon: 'moon', c: 'c2', title: 'Sleep', sub: d.sleep != null ? `${d.sleep} hours` : 'How long did you sleep?', done: d.sleep != null, act: 'sheetSleep', arg: date });
   L.push({ key: 'water', icon: 'drop', c: 'c4', title: 'Water', sub: `${round(d.water || 0)} of ${S.settings.waterGoal} L`, done: (d.water || 0) >= S.settings.waterGoal, act: 'sheetWater', arg: date });
   for (const t of tasksFor(date)) L.push({ key: 'task' + t.id, icon: 'tasks', c: 'c1', title: t.data.title, sub: t.data.repeat === 'once' ? 'Today' : t.data.repeat === 'daily' ? 'Every day' : (t.data.weekdays || []).map(w => DOW[w]).join(', '), done: !!(d.tasks || {})[t.id], act: 'toggleTask', arg: t.id + '|' + date, tick: true });
-  return L;
+  const hid = S.settings.hideCheck || [];
+  return hid.length ? L.filter(x => !hid.includes(checkGroup(x.key))) : L;
 }
 function dailyScore(date) {
   const d = day(date); let got = 0, max = 0;
@@ -349,7 +360,7 @@ function applyTheme() {
   const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = night ? '#0F1030' : '#FBF6EE';
 }
 const NAV = [['today', 'home', 'Today'], ['faith', 'crescent', 'Faith'], ['study', 'cap', 'Study'], ['rel', 'heart', 'People'], ['fitness', 'dumbbell', 'Fitness'], ['more', 'more', 'More']];
-const TAB_OF = { lang: 'study', prayers: 'faith', azkar: 'faith',  search: 'more', reports: 'more', notifs: 'today', person: 'rel', azkarEdit: 'faith', duaEdit: 'faith', reminders: 'more', quran: 'faith', summary: 'more', dates: 'more', zakat: 'faith', fasts: 'faith', nazr: 'faith', notes: 'more', tasks: 'more', settings: 'more', importTimes: 'more', langs: 'study' };
+const TAB_OF = { lang: 'study', prayers: 'faith', azkar: 'faith',  search: 'more', reports: 'more', notifs: 'today', person: 'rel', azkarEdit: 'faith', duaEdit: 'faith', reminders: 'more', quran: 'faith', summary: 'more', dates: 'more', zakat: 'faith', fasts: 'faith', nazr: 'faith', notes: 'more', tasks: 'today', settings: 'more', importTimes: 'more', langs: 'study' };
 const MAIN = ['today', 'faith', 'study', 'rel', 'fitness', 'more'];
 function nav() { const cur = TAB_OF[S.view] || S.view; return `${MAIN.includes(S.view) && !(S.view === 'rel' && relLocked()) ? '<button class="fab" data-act="quickAdd" aria-label="Quick add">+</button>' : ''}<nav class="nav">${NAV.map(([v, ic, l]) => `<button data-act="go" data-arg="${v}" class="${cur === v ? 'on' : ''}">${I[ic]}${l}</button>`).join('')}</nav>`; }
 function pageTop(title, backTo) { return `<div class="ph-top">${backTo ? `<button class="back" data-act="go" data-arg="${backTo}" aria-label="Back">${I.back}</button>` : ''}<h1>${esc(title)}</h1></div>`; }
@@ -581,7 +592,7 @@ function miniBars(vals, dates, max, color, label) {
 
 /* ---------- More ---------- */
 function vMore() {
-  const rows = [['search', 'search', 'c2', 'Search', 'Notes, people, reminders, azkar…'], ['reports', 'chart', 'c5', 'Reports', 'Monthly, yearly and year in review'], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => remNext(m, today())).length} upcoming`], ['tasks', 'tasks', 'c1', 'My tasks', 'Add or remove daily tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
+  const rows = [['search', 'search', 'c2', 'Search', 'Notes, people, reminders, azkar…'], ['reports', 'chart', 'c5', 'Reports', 'Monthly, yearly and year in review'], ['summary', 'chart', 'c2', 'Weekly summary', 'This week at a glance'], ['dates', 'gift', 'c6', 'Important dates', `${items('event').length} saved`], ['notes', 'note', 'c3', 'Notes', `${items('note').length} notes`], ['reminders', 'bell', 'c6', 'My reminders', `${items('reminder').filter(m => remNext(m, today())).length} upcoming`], ['tasks', 'tasks', 'c1', 'Checklist and tasks', 'Choose what shows on Today, add your own tasks'], ['settings', 'settings', 'c2', 'Settings', 'Reminders, times, backup']];
   return `<div class="page">${pageTop('More')}<div class="wrap"><div class="list">${rows.map(r => `<button class="row" data-act="go" data-arg="${r[0]}">${icon(r[1], r[2])}<span class="t"><b>${r[3]}</b><span>${r[4]}</span></span>${I.chev}</button>`).join('')}</div></div></div>`;
 }
 
@@ -890,7 +901,11 @@ function vFaith() {
    </div></div></div>`;
 }
 function vTasks() {
-  return `<div class="page">${pageTop('My tasks', 'more')}<div class="wrap"><p class="muted small" style="margin:0 6px">Prayers, gym, Quran, languages, cardio, sleep and water are always on your checklist. Add your own tasks here.</p>
+  const hid = S.settings.hideCheck || [];
+  return `<div class="page">${pageTop('Checklist', 'today')}<div class="wrap">
+  <div class="h2">Show on Today's checklist</div><p class="muted small" style="margin:0 6px 8px">Turning something off only removes it from the checklist. It stays in its own section and keeps working as before.</p>
+  <div class="list">${checkGroups().map(([k, ic, c, l]) => `<div class="row">${icon(ic, c)}<span class="t"><b style="font-weight:500">${esc(l)}</b></span><button class="toggle ${hid.includes(k) ? '' : 'on'}" data-act="toggleCheck" data-arg="${k}" aria-label="${esc(l)}"></button></div>`).join('')}</div>
+  <div class="h2">My tasks</div>
   <div class="list">${items('task').length ? items('task').map(t => `<button class="row" data-act="sheetTask" data-arg="${t.id}">${icon('tasks', 'c1')}<span class="t"><b>${esc(t.data.title)}</b><span>${t.data.repeat === 'daily' ? 'Every day' : t.data.repeat === 'once' ? 'Once · ' + fmtDateY(t.data.date) : (t.data.weekdays || []).map(w => DOW[w]).join(', ')}</span></span>${I.chev}</button>`).join('') : '<div class="empty">No extra tasks yet</div>'}</div>
   <button class="btn sec2 add" data-act="sheetTask">Add task</button></div></div>`;
 }
@@ -1321,6 +1336,7 @@ const ACT = {
   delSession(id) { closeSheet(); deleteWithUndo(id, 'Study session deleted'); render(); },
   delItemAct(id) { closeSheet(); deleteWithUndo(id); render(); },
   theme(k) { S.settings.theme = k; saveSettings(); render(); },
+  toggleCheck(k) { const h = S.settings.hideCheck || [], was = h.includes(k); S.settings.hideCheck = was ? h.filter(x => x !== k) : [...h, k]; saveSettings(); render(); toast(was ? 'Back on the checklist' : 'Removed from the checklist', () => { S.settings.hideCheck = h; saveSettings(); render(); }); },
   toggleRem(k) { S.settings.reminders[k] = !S.settings.reminders[k]; saveSettings(); render(); },
   hijriAdj(n) { S.settings.hijriAdjust = Math.max(-2, Math.min(2, (S.settings.hijriAdjust || 0) + +n)); saveSettings(); render(); },
   saveIqamah() { for (const p of PR) { const v = num('iq_' + p); if (v != null) S.settings.iqamah[p] = v; } saveSettings(); done('Iqamah times saved'); },
